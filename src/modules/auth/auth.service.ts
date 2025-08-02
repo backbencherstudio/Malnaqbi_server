@@ -176,7 +176,7 @@ export class AuthService {
         where: { phone_number },
       });
 
-      if(user){
+      if (user) {
         await this.prisma.user.update({
           where: { phone_number },
           data: { phone_number_verified: true },
@@ -216,17 +216,20 @@ export class AuthService {
     name,
     address,
     avatar,
+    password,
   }: {
     userId: string;
     name: string;
     address: string;
     avatar?: Express.Multer.File;
+    password: string;
   }) {
     // Validate inputs
     if (!userId || !name || !address) {
       throw new BadRequestException('Missing required fields');
     }
 
+    const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -260,6 +263,7 @@ export class AuthService {
         data: {
           name,
           address,
+          password: hashedPassword,
           ...(avatarFileName && { avatar: avatarFileName }),
         },
       });
@@ -273,49 +277,50 @@ export class AuthService {
       throw new InternalServerErrorException('Registration update failed');
     }
   }
-//-----------------registration end for normal user-----------------
+  //-----------------registration end for normal user-----------------
 
 
 
-// ---------------------registration for Business owner-------------------
+  // ---------------------registration for Business owner-------------------
 
-async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
-  const { phone_number, name, address, password } = createBusinessOwnerDto;
+  async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
+    const { phone_number, name, address, password } = createBusinessOwnerDto;
 
-  // Check if phone number exists
-  const existingPhone = await UserRepository.exist({
-    field: 'phone_number',
-    value: phone_number,
-  });
-  if (existingPhone) throw new ConflictException('Phone number already exists');
-
-  const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
-
-  try {
-    const user = await this.prisma.user.create({
-      data: {
-        phone_number,
-        name,
-        address,
-        type: 'BUSINESS_OWNER',
-        password: hashedPassword,
-        is_verified:false,
-      },
+    // Check if phone number exists
+    const existingPhone = await UserRepository.exist({
+      field: 'phone_number',
+      value: phone_number,
     });
+    if (existingPhone) throw new ConflictException('Phone number already exists');
 
-    // Generate OTP & send it
-    const otp = await UcodeRepository.createOtpForPhone(phone_number);
+    const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
 
-    return {
-      success: true,
-      message: 'OTP sent to phone. Verify to complete registration.',
-      phone_number: user.phone_number,
-    };
-  } catch (err) {
-    if (err.code === 'P2002') throw new ConflictException('Phone number already exists');
-    throw new InternalServerErrorException('Registration failed');
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          phone_number,
+          name,
+          address,
+          type: 'BUSINESS_OWNER',
+          password: hashedPassword,
+          is_verified: false,
+        },
+      });
+
+      // Generate OTP & send it
+      const otp = await UcodeRepository.createOtpForPhone(phone_number);
+
+      return {
+        success: true,
+        message: 'OTP sent to phone. Verify to complete registration.',
+        phone_number: user.phone_number,
+      };
+    } catch (err) {
+      if (err.code === 'P2002') throw new ConflictException('Phone number already exists');
+      throw new InternalServerErrorException('Registration failed');
+    }
   }
-}
+  //---------------------registration for Business owner end-------------------
 
 
 
@@ -324,8 +329,7 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
 
 
 
-
-
+  //-----------------------imgage upload-----------------------
   private async deleteOldAvatar(filename: string): Promise<void> {
     await SojebStorage.delete(appConfig().storageUrl.avatar + filename);
   }
@@ -337,11 +341,11 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
     );
     return fileName;
   }
+  //-----------------------imgage upload end-----------------------
 
 
 
-
-
+  //-----------------------update user-----------------------
   async updateUser(
     userId: string,
     updateUserDto: UpdateUserDto,
@@ -433,20 +437,20 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
     }
   }
   async validateUser(
-    email: string,
+    phone_number: string,
     pass: string,
     token?: string,
   ): Promise<any> {
     const _password = pass;
     const user = await this.prisma.user.findFirst({
       where: {
-        email: email,
+        phone_number: phone_number,
       },
     });
 
     if (user) {
       const _isValidPassword = await UserRepository.validatePassword({
-        email: email,
+        phone_number: phone_number,
         password: _password,
       });
       if (_isValidPassword) {
@@ -478,13 +482,17 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
         // };
       }
     } else {
-      throw new UnauthorizedException('Email not found');
+      throw new UnauthorizedException('phone_number not found');
       // return {
       //   success: false,
       //   message: 'Email not found',
       // };
     }
   }
+  //-----------------------update user end-----------------------
+
+
+
 
   //-------------------------login-------------------------
   async login({ phone_number, userId }) {
@@ -587,35 +595,27 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
       };
     }
   }
+  //-------------------------login end-------------------------
+
 
   //-----------------------forget password-----------------------
-  async forgotPassword(email) {
+  async forgotPassword(phone_number) {
     try {
       const user = await UserRepository.exist({
-        field: 'email',
-        value: email,
+        field: 'phone_number',
+        value: phone_number,
       });
 
       if (user) {
-        const token = await UcodeRepository.createToken({
-          userId: user.id,
-          isOtp: true,
-        });
-
-        await this.mailService.sendOtpCodeToEmail({
-          email: email,
-          name: user.name,
-          otp: token,
-        });
-
+        const token = await UcodeRepository.createOtpForPhone(phone_number);
         return {
           success: true,
-          message: 'We have sent an OTP code to your email',
+          message: 'We have sent an OTP code to your phone_number',
         };
       } else {
         return {
           success: false,
-          message: 'Email not found',
+          message: 'phone_number not found',
         };
       }
     } catch (error) {
@@ -625,47 +625,52 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
       };
     }
   }
-  async resetPassword({ email, token, password }) {
+  async resetPassword(body) {
     try {
-      const user = await UserRepository.exist({
-        field: 'email',
-        value: email,
+      const { phone_number, token, password } = body;
+      if (!phone_number || !token || !password) {
+        throw new BadRequestException('phone_number, token and password are required');
+      }
+
+      const otpRecord = await this.prisma.ucode.findFirst({
+        where: {
+          phone_number,
+          token,
+          status: 1,
+        },
       });
 
-      if (user) {
-        const existToken = await UcodeRepository.validateToken({
-          email: email,
-          token: token,
-        });
-
-        if (existToken) {
-          await UserRepository.changePassword({
-            email: email,
-            password: password,
-          });
-
-          // delete otp code
-          await UcodeRepository.deleteToken({
-            email: email,
-            token: token,
-          });
-
-          return {
-            success: true,
-            message: 'Password updated successfully',
-          };
-        } else {
-          return {
-            success: false,
-            message: 'Invalid token',
-          };
-        }
-      } else {
+      if (!otpRecord) {
         return {
           success: false,
-          message: 'Email not found',
+          message: 'Invalid OTP code',
         };
       }
+
+      if (otpRecord.expired_at && new Date() > otpRecord.expired_at) {
+        return {
+          success: false,
+          message: 'OTP expired. Please request a new one.',
+          shouldResendOtp: true,
+        };
+      }
+
+      // delete otp after match
+      await this.prisma.ucode.deleteMany({
+        where: { phone_number },
+      });
+
+      // update password
+      const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
+      await this.prisma.user.update({
+        where: { phone_number },
+        data: { password: hashedPassword },
+      });
+
+      return {
+        success: true,
+        message: 'Password reset successfully',
+      };
     } catch (error) {
       return {
         success: false,
@@ -673,6 +678,10 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
       };
     }
   }
+  //-----------------------forget password end-----------------------
+
+
+
   async verifyEmail({ email, token }) {
     try {
       const user = await UserRepository.exist({
@@ -766,7 +775,7 @@ async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
 
       if (user) {
         const _isValidPassword = await UserRepository.validatePassword({
-          email: user.email,
+          phone_number: user.email,
           password: oldPassword,
         });
         if (_isValidPassword) {

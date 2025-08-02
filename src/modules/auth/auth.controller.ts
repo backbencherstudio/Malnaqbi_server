@@ -32,7 +32,7 @@ import { CreateBusinessOwnerDto } from './dto/create-business-owner.dto';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(private authService: AuthService) { }
 
   @ApiOperation({ summary: 'Get user details' })
   @ApiBearerAuth()
@@ -78,7 +78,7 @@ export class AuthController {
       const token = data.token;
 
       console.log('Register Step Two:', { phone_number, token });
-      
+
       if (!phone_number) {
         throw new HttpException(
           'Phone number not provided',
@@ -104,36 +104,37 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('avatar'))
   async finalizeRegistration(
-    @Req() req: any, 
-    @Body() body: { name: string; location: string },
+    @Req() req: any,
+    @Body() body: { name: string; location: string; password: string },
     @UploadedFile() avatar?: Express.Multer.File,
   ) {
     if (!req.user?.userId) {
       console.log('req user', req.user?.id);
-      
+
     }
-  
+
     return this.authService.finalizeRegistration({
       userId: req.user?.id,
       name: body.name,
       address: body.location,
+      password: body.password,
       avatar,
     });
   }
-  
-//------------------register user end-------------------
-  
 
-
-//register business owner
-@Post('register-business-owner')
-async registerBusinessOwner(@Body() createBusinessOwnerDto: CreateBusinessOwnerDto) {
-  return this.authService.registerBusinessOwner(createBusinessOwnerDto);
-}
+  //------------------register user end-------------------
 
 
 
-  // login user
+  //register business owner
+  @Post('register-business-owner')
+  async registerBusinessOwner(@Body() createBusinessOwnerDto: CreateBusinessOwnerDto) {
+    return this.authService.registerBusinessOwner(createBusinessOwnerDto);
+  }
+
+
+
+  //------------------login user-------------------
   @ApiOperation({ summary: 'Login user' })
   @UseGuards(LocalAuthGuard)
   @Post('login')
@@ -188,6 +189,9 @@ async registerBusinessOwner(@Body() createBusinessOwnerDto: CreateBusinessOwnerD
       };
     }
   }
+
+  //------------------login user end-------------------
+
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -262,20 +266,27 @@ async registerBusinessOwner(@Body() createBusinessOwnerDto: CreateBusinessOwnerD
 
   @ApiOperation({ summary: 'Forgot password' })
   @Post('forgot-password')
-  async forgotPassword(@Body() data: { email: string }) {
+  async forgotPassword(@Body() data: { phone_number: string }) {
     try {
-      const email = data.email;
-      if (!email) {
-        throw new HttpException('Email not provided', HttpStatus.UNAUTHORIZED);
+      if (!data.phone_number) {
+        throw new HttpException('phone_number is required', HttpStatus.BAD_REQUEST);
       }
-      return await this.authService.forgotPassword(email);
+      return await this.authService.forgotPassword(data.phone_number);
     } catch (error) {
+      console.error(error); // log for debugging
       return {
         success: false,
-        message: 'Something went wrong',
+        message: error.message || 'Something went wrong',
       };
     }
   }
+  
+
+  @Post('reset-password')
+  async resetPasswordd(@Body() body: { phone_number: string; token: string; password: string }) {
+    return this.authService.resetPassword(body);
+  }
+
 
   // verify email to verify the email
   @ApiOperation({ summary: 'Verify email' })
@@ -319,41 +330,41 @@ async registerBusinessOwner(@Body() createBusinessOwnerDto: CreateBusinessOwnerD
       };
     }
   }
-
-  // reset password if user forget the password
-  @ApiOperation({ summary: 'Reset password' })
-  @Post('reset-password')
-  async resetPassword(
-    @Body() data: { email: string; token: string; password: string },
-  ) {
-    try {
-      const email = data.email;
-      const token = data.token;
-      const password = data.password;
-      if (!email) {
-        throw new HttpException('Email not provided', HttpStatus.UNAUTHORIZED);
-      }
-      if (!token) {
-        throw new HttpException('Token not provided', HttpStatus.UNAUTHORIZED);
-      }
-      if (!password) {
-        throw new HttpException(
-          'Password not provided',
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-      return await this.authService.resetPassword({
-        email: email,
-        token: token,
-        password: password,
-      });
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Something went wrong',
-      };
-    }
-  }
+   //-----------------This wont be used for now-----------------//
+  // reset password if user forget the password ----------------//
+  // @ApiOperation({ summary: 'Reset password' })--------------//
+  // @Post('reset-password')-----------------------------------//
+  // async resetPassword(-------------------------------------//
+  //   @Body() data: { email: string; token: string; password: string },
+  // ) {
+  //   try {
+  //     const email = data.email;
+  //     const token = data.token;
+  //     const password = data.password;
+  //     if (!email) {
+  //       throw new HttpException('Email not provided', HttpStatus.UNAUTHORIZED);
+  //     }
+  //     if (!token) {
+  //       throw new HttpException('Token not provided', HttpStatus.UNAUTHORIZED);
+  //     }
+  //     if (!password) {
+  //       throw new HttpException(
+  //         'Password not provided',
+  //         HttpStatus.UNAUTHORIZED,
+  //       );
+  //     }
+  //     return await this.authService.resetPassword({
+  //       email: email,
+  //       token: token,
+  //       password: password,
+  //     });
+  //   } catch (error) {
+  //     return {
+  //       success: false,
+  //       message: 'Something went wrong',
+  //     };
+  //   }
+  // }---------------------------------------------------------//
 
   // change password if user want to change the password
   @ApiOperation({ summary: 'Change password' })

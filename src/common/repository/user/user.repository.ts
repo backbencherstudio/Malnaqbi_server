@@ -480,15 +480,15 @@ export class UserRepository {
 
   // validate password
   static async validatePassword({
-    email,
+    phone_number,
     password,
   }: {
-    email: string;
+    phone_number: string;
     password: string;
   }) {
     const user = await prisma.user.findFirst({
       where: {
-        email: email,
+        phone_number: phone_number,
       },
     });
     if (user) {
