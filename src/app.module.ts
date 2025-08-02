@@ -20,6 +20,7 @@ import { ApplicationModule } from './modules/application/application.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { SmsModule } from './modules/sms/sms.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { PaymentModule } from './modules/payment/payment.module';
     AdminModule,
     ChatModule,
     PaymentModule,
+    SmsModule,
   ],
   controllers: [AppController],
   providers: [

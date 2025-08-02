@@ -50,7 +50,7 @@ model User {
   domain     String? @unique
   avatar     String?
 
-  phone_number  String?
+  phone_number  String? @unique
   country       String?
   state         String?
   city          String?
@@ -94,6 +94,9 @@ model Ucode {
 
   user_id String?
   user    User?   @relation(fields: [user_id], references: [id])
+
+  phone_number String?
+  
 
   token      String?
   email      String?

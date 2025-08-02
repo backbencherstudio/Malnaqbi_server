@@ -46,6 +46,31 @@ export class UcodeRepository {
     }
   }
 
+
+  static async createOtpForPhone(phone_number: string, expired_at?: Date): Promise<string | null> {
+    try {
+      const otpExpiryTime = 5 * 60 * 1000;
+      expired_at = expired_at || new Date(Date.now() + otpExpiryTime);
+      const token = String(Math.floor(100000 + Math.random() * 900000)); 
+  
+      const ucode = await prisma.ucode.create({
+        data: {
+          token: String(token),
+          phone_number: phone_number,
+          expired_at: expired_at,
+          status: 1,
+        },
+      });
+  
+      return ucode.token;
+    } catch (error) {
+      console.error("Failed to create OTP for phone number", error);
+      return null;
+    }
+  }
+
+  
+
   /**
    * validate ucode token
    * @returns

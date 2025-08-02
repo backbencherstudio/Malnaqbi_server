@@ -1,5 +1,5 @@
 // external imports
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
@@ -15,7 +15,7 @@ import { SojebStorage } from '../../common/lib/Disk/SojebStorage';
 import { DateHelper } from '../../common/helper/date.helper';
 import { StripePayment } from '../../common/lib/Payment/stripe/StripePayment';
 import { StringHelper } from '../../common/helper/string.helper';
-
+import { SmsService } from '../sms/sms.service';
 @Injectable()
 export class AuthService {
   constructor(
@@ -23,8 +23,10 @@ export class AuthService {
     private prisma: PrismaService,
     private mailService: MailService,
     @InjectRedis() private readonly redis: Redis,
-  ) {}
+  ) { }
 
+
+  //get me 
   async me(userId: string) {
     try {
       const user = await this.prisma.user.findFirst({
@@ -76,6 +78,213 @@ export class AuthService {
       };
     }
   }
+  //register step one
+  async registerStepOne({
+    phone_number
+  }: {
+    phone_number: string;
+  }) {
+    try {
+      // Checking if phone number already exists
+      const userPhoneExist = await UserRepository.exist({
+        field: 'phone_number',
+        value: String(phone_number),
+      });
+
+      if (userPhoneExist) {
+        return {
+          success: false,
+          statusCode: 401,
+          message: 'Phone number already exists.',
+        };
+      }
+
+      // otp is generating here
+      const token = await UcodeRepository.createOtpForPhone(phone_number);
+
+      if (!token) {
+        return {
+          success: false,
+          statusCode: 500,
+          message: 'Unable to generate OTP. Please try again.',
+        };
+      }
+
+      const smsService = new SmsService();
+      const sent = await smsService.sendOtpToPhone(phone_number, token);
+
+      if (!sent) {
+        return {
+          success: false,
+          message: 'Failed to send OTP SMS. Please try again.',
+        };
+      }
+
+      return {
+        success: true,
+        message: 'We have sent an OTP code to your phone number via SMS.',
+      };
+
+    } catch (error) {
+      console.error('Error in registerStepOne:', error);
+      return {
+        success: false,
+        message: 'Internal server error. Please try again later.',
+      };
+    }
+  }
+  //register step two
+  async matchPhoneOtp({
+    phone_number,
+    token,
+  }: {
+    phone_number: string;
+    token: string;
+  }) {
+    try {
+      const otpRecord = await this.prisma.ucode.findFirst({
+        where: {
+          phone_number,
+          token,
+          status: 1,
+        },
+      });
+
+      if (!otpRecord) {
+        return {
+          success: false,
+          message: 'Invalid OTP code.',
+        };
+      }
+
+      if (otpRecord.expired_at && new Date() > otpRecord.expired_at) {
+        return {
+          success: false,
+          message: 'OTP expired. Please request a new one.',
+          shouldResendOtp: true,
+        };
+      }
+
+      await this.prisma.ucode.deleteMany({
+        where: { phone_number },
+      });
+
+      let user = await this.prisma.user.findUnique({
+        where: { phone_number },
+      });
+
+      if (!user) {
+        user = await this.prisma.user.create({
+          data: { phone_number },
+        });
+      }
+
+      const jwtToken = this.jwtService.sign({
+        userId: user.id,
+        id: user.id,
+        email: user.email,
+        phone_number: user.phone_number,
+      });
+
+      const isProfileComplete = !!(user.name && user.address);
+
+      return {
+        success: true,
+        message: isProfileComplete
+          ? 'Login successful.'
+          : 'Phone number verified. Please complete registration.',
+        token: jwtToken,
+        profileComplete: isProfileComplete,
+      };
+    } catch (error) {
+      console.error('Error in matchPhoneOtp:', error);
+      return {
+        success: false,
+        message: 'Internal server error. Please try again later.',
+      };
+    }
+  }
+  // Finalize registration after phone verification
+  async finalizeRegistration({
+    userId,
+    name,
+    address,
+    avatar,
+  }: {
+    userId: string;
+    name: string;
+    address: string;
+    avatar?: Express.Multer.File;
+  }) {
+    // Validate inputs
+    if (!userId || !name || !address) {
+      throw new BadRequestException('Missing required fields');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.name && user.address) {
+      throw new ConflictException('Account already registered');
+    }
+
+    // Handle avatar upload
+    let avatarFileName: string | undefined;
+    if (avatar) {
+      try {
+        if (user.avatar) {
+          await this.deleteOldAvatar(user.avatar);
+        }
+        avatarFileName = await this.uploadAvatar(avatar);
+      } catch (error) {
+        console.error('Avatar upload failed:', error);
+        throw new InternalServerErrorException('Avatar upload failed');
+      }
+    }
+
+    // Update user
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          name,
+          address,
+          ...(avatarFileName && { avatar: avatarFileName }),
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Registration completed successfully',
+      };
+    } catch (error) {
+      console.error('Registration update failed:', error);
+      throw new InternalServerErrorException('Registration update failed');
+    }
+  }
+//-----------------registration end-----------------
+
+
+  private async deleteOldAvatar(filename: string): Promise<void> {
+    await SojebStorage.delete(appConfig().storageUrl.avatar + filename);
+  }
+  private async uploadAvatar(file: Express.Multer.File): Promise<string> {
+    const fileName = `${StringHelper.randomString()}-${file.originalname}`;
+    await SojebStorage.put(
+      appConfig().storageUrl.avatar + fileName,
+      file.buffer,
+    );
+    return fileName;
+  }
+
+
+
+
 
   async updateUser(
     userId: string,
@@ -167,7 +376,6 @@ export class AuthService {
       };
     }
   }
-
   async validateUser(
     email: string,
     pass: string,
@@ -221,7 +429,6 @@ export class AuthService {
       // };
     }
   }
-
   async login({ email, userId }) {
     try {
       const payload = { email: email, sub: userId };
@@ -256,7 +463,6 @@ export class AuthService {
       };
     }
   }
-
   async refreshToken(user_id: string, refreshToken: string) {
     try {
       const storedToken = await this.redis.get(`refresh_token:${user_id}`);
@@ -300,7 +506,6 @@ export class AuthService {
       };
     }
   }
-
   async revokeRefreshToken(user_id: string) {
     try {
       const storedToken = await this.redis.get(`refresh_token:${user_id}`);
@@ -325,116 +530,7 @@ export class AuthService {
     }
   }
 
-  async register({
-    name,
-    first_name,
-    last_name,
-    email,
-    password,
-    type,
-  }: {
-    name: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    password: string;
-    type?: string;
-  }) {
-    try {
-      // Check if email already exist
-      const userEmailExist = await UserRepository.exist({
-        field: 'email',
-        value: String(email),
-      });
-
-      if (userEmailExist) {
-        return {
-          statusCode: 401,
-          message: 'Email already exist',
-        };
-      }
-
-      const user = await UserRepository.createUser({
-        name: name,
-        first_name: first_name,
-        last_name: last_name,
-        email: email,
-        password: password,
-        type: type,
-      });
-
-      if (user == null && user.success == false) {
-        return {
-          success: false,
-          message: 'Failed to create account',
-        };
-      }
-
-      // create stripe customer account
-      const stripeCustomer = await StripePayment.createCustomer({
-        user_id: user.data.id,
-        email: email,
-        name: name,
-      });
-
-      if (stripeCustomer) {
-        await this.prisma.user.update({
-          where: {
-            id: user.data.id,
-          },
-          data: {
-            billing_id: stripeCustomer.id,
-          },
-        });
-      }
-
-      // ----------------------------------------------------
-      // // create otp code
-      // const token = await UcodeRepository.createToken({
-      //   userId: user.data.id,
-      //   isOtp: true,
-      // });
-
-      // // send otp code to email
-      // await this.mailService.sendOtpCodeToEmail({
-      //   email: email,
-      //   name: name,
-      //   otp: token,
-      // });
-
-      // return {
-      //   success: true,
-      //   message: 'We have sent an OTP code to your email',
-      // };
-
-      // ----------------------------------------------------
-
-      // Generate verification token
-      const token = await UcodeRepository.createVerificationToken({
-        userId: user.data.id,
-        email: email,
-      });
-
-      // Send verification email with token
-      await this.mailService.sendVerificationLink({
-        email,
-        name: email,
-        token: token.token,
-        type: type,
-      });
-
-      return {
-        success: true,
-        message: 'We have sent a verification link to your email',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-      };
-    }
-  }
-
+  //-----------------------forget password-----------------------
   async forgotPassword(email) {
     try {
       const user = await UserRepository.exist({
@@ -471,7 +567,6 @@ export class AuthService {
       };
     }
   }
-
   async resetPassword({ email, token, password }) {
     try {
       const user = await UserRepository.exist({
@@ -520,7 +615,6 @@ export class AuthService {
       };
     }
   }
-
   async verifyEmail({ email, token }) {
     try {
       const user = await UserRepository.exist({
@@ -573,7 +667,6 @@ export class AuthService {
       };
     }
   }
-
   async resendVerificationEmail(email: string) {
     try {
       const user = await UserRepository.getUserByEmail(email);
@@ -609,7 +702,6 @@ export class AuthService {
       };
     }
   }
-
   async changePassword({ user_id, oldPassword, newPassword }) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
@@ -648,7 +740,6 @@ export class AuthService {
       };
     }
   }
-
   async requestEmailChange(user_id: string, email: string) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
@@ -682,7 +773,6 @@ export class AuthService {
       };
     }
   }
-
   async changeEmail({
     user_id,
     new_email,
@@ -749,7 +839,6 @@ export class AuthService {
       };
     }
   }
-
   async verify2FA(user_id: string, token: string) {
     try {
       const isValid = await UserRepository.verify2FA(user_id, token);
@@ -770,7 +859,6 @@ export class AuthService {
       };
     }
   }
-
   async enable2FA(user_id: string) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
@@ -793,7 +881,6 @@ export class AuthService {
       };
     }
   }
-
   async disable2FA(user_id: string) {
     try {
       const user = await UserRepository.getUserDetails(user_id);

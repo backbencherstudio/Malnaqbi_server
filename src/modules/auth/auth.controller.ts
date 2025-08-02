@@ -8,6 +8,7 @@ import {
   Post,
   Req,
   Res,
+  UnauthorizedException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -49,52 +50,17 @@ export class AuthController {
     }
   }
 
-  @ApiOperation({ summary: 'Register a user' })
-  @Post('register')
-  async create(@Body() data: CreateUserDto) {
+  @Post('register-step-one')
+  async registerStepOne(@Body() data: { phone_number: string }) {
     try {
-      const name = data.name;
-      const first_name = data.first_name;
-      const last_name = data.last_name;
-      const email = data.email;
-      const password = data.password;
-      const type = data.type;
-
-      if (!name) {
-        throw new HttpException('Name not provided', HttpStatus.UNAUTHORIZED);
-      }
-      if (!first_name) {
+      const phone_number = data.phone_number;
+      if (!phone_number) {
         throw new HttpException(
-          'First name not provided',
+          'Phone number not provided',
           HttpStatus.UNAUTHORIZED,
         );
       }
-      if (!last_name) {
-        throw new HttpException(
-          'Last name not provided',
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-      if (!email) {
-        throw new HttpException('Email not provided', HttpStatus.UNAUTHORIZED);
-      }
-      if (!password) {
-        throw new HttpException(
-          'Password not provided',
-          HttpStatus.UNAUTHORIZED,
-        );
-      }
-
-      const response = await this.authService.register({
-        name: name,
-        first_name: first_name,
-        last_name: last_name,
-        email: email,
-        password: password,
-        type: type,
-      });
-
-      return response;
+      return await this.authService.registerStepOne({ phone_number });
     } catch (error) {
       return {
         success: false,
@@ -102,6 +68,63 @@ export class AuthController {
       };
     }
   }
+
+
+  @Post('register-step-two')
+  async registerStepTwo(@Body() data: { phone_number: string; token: string }) {
+    try {
+      const phone_number = data.phone_number;
+      const token = data.token;
+
+      console.log('Register Step Two:', { phone_number, token });
+      
+      if (!phone_number) {
+        throw new HttpException(
+          'Phone number not provided',
+          HttpStatus.UNAUTHORIZED,
+        );
+      }
+      if (!token) {
+        throw new HttpException('Token not provided', HttpStatus.UNAUTHORIZED);
+      }
+      return await this.authService.matchPhoneOtp({
+        phone_number: phone_number,
+        token: token,
+      });
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+ 
+
+  @Post('finalize-registration')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(FileInterceptor('avatar'))
+  async finalizeRegistration(
+    @Req() req: any, 
+    @Body() body: { name: string; location: string },
+    @UploadedFile() avatar?: Express.Multer.File,
+  ) {
+    if (!req.user?.userId) {
+      console.log('req user', req.user?.id);
+      
+    }
+  
+    return this.authService.finalizeRegistration({
+      userId: req.user?.id,
+      name: body.name,
+      address: body.location,
+      avatar,
+    });
+  }
+  
+  
+  
+
 
   // login user
   @ApiOperation({ summary: 'Login user' })
