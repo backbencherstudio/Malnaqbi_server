@@ -25,6 +25,9 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import appConfig from '../../config/app.config';
 import { AuthGuard } from '@nestjs/passport';
+import { CreateBusinessOwnerDto } from './dto/create-business-owner.dto';
+
+
 
 @ApiTags('auth')
 @Controller('auth')
@@ -49,7 +52,7 @@ export class AuthController {
       };
     }
   }
-
+  //--------------------register user-------------------
   @Post('register-step-one')
   async registerStepOne(@Body() data: { phone_number: string }) {
     try {
@@ -68,8 +71,6 @@ export class AuthController {
       };
     }
   }
-
-
   @Post('register-step-two')
   async registerStepTwo(@Body() data: { phone_number: string; token: string }) {
     try {
@@ -98,8 +99,6 @@ export class AuthController {
       };
     }
   }
- 
-
   @Post('finalize-registration')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -122,8 +121,16 @@ export class AuthController {
     });
   }
   
+//------------------register user end-------------------
   
-  
+
+
+//register business owner
+@Post('register-business-owner')
+async registerBusinessOwner(@Body() createBusinessOwnerDto: CreateBusinessOwnerDto) {
+  return this.authService.registerBusinessOwner(createBusinessOwnerDto);
+}
+
 
 
   // login user
@@ -133,12 +140,12 @@ export class AuthController {
   async login(@Req() req: Request, @Res() res: Response) {
     try {
       const user_id = req.user.id;
+      const user_phone_number = req.user.phone_number;
 
-      const user_email = req.user.email;
 
       const response = await this.authService.login({
         userId: user_id,
-        email: user_email,
+        phone_number: user_phone_number,
       });
 
       // store to secure cookies

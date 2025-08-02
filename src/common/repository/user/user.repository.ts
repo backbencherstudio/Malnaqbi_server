@@ -88,7 +88,7 @@ export class UserRepository {
           username: username,
           email: email,
           password: password,
-          type: 'su_admin',
+          type: 'ADMIN',
         },
       });
       return user;
@@ -509,7 +509,7 @@ export class UserRepository {
           message: 'User not found',
         };
       }
-      if (userDetails.type == 'vendor') {
+      if (userDetails.type == 'ADMIN' || userDetails.type == 'BUSINESS_OWNER') {
         return {
           success: false,
           message: 'User is already a vendor',

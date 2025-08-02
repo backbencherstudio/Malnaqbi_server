@@ -16,6 +16,9 @@ import { DateHelper } from '../../common/helper/date.helper';
 import { StripePayment } from '../../common/lib/Payment/stripe/StripePayment';
 import { StringHelper } from '../../common/helper/string.helper';
 import { SmsService } from '../sms/sms.service';
+import { CreateBusinessOwnerDto } from './dto/create-business-owner.dto';
+import * as bcrypt from 'bcrypt';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -173,6 +176,13 @@ export class AuthService {
         where: { phone_number },
       });
 
+      if(user){
+        await this.prisma.user.update({
+          where: { phone_number },
+          data: { phone_number_verified: true },
+        });
+      }
+
       if (!user) {
         user = await this.prisma.user.create({
           data: { phone_number },
@@ -186,15 +196,11 @@ export class AuthService {
         phone_number: user.phone_number,
       });
 
-      const isProfileComplete = !!(user.name && user.address);
 
       return {
         success: true,
-        message: isProfileComplete
-          ? 'Login successful.'
-          : 'Phone number verified. Please complete registration.',
+        message: "Phone number verified successfully.",
         token: jwtToken,
-        profileComplete: isProfileComplete,
       };
     } catch (error) {
       console.error('Error in matchPhoneOtp:', error);
@@ -267,7 +273,57 @@ export class AuthService {
       throw new InternalServerErrorException('Registration update failed');
     }
   }
-//-----------------registration end-----------------
+//-----------------registration end for normal user-----------------
+
+
+
+// ---------------------registration for Business owner-------------------
+
+async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
+  const { phone_number, name, address, password } = createBusinessOwnerDto;
+
+  // Check if phone number exists
+  const existingPhone = await UserRepository.exist({
+    field: 'phone_number',
+    value: phone_number,
+  });
+  if (existingPhone) throw new ConflictException('Phone number already exists');
+
+  const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
+
+  try {
+    const user = await this.prisma.user.create({
+      data: {
+        phone_number,
+        name,
+        address,
+        type: 'BUSINESS_OWNER',
+        password: hashedPassword,
+        is_verified:false,
+      },
+    });
+
+    // Generate OTP & send it
+    const otp = await UcodeRepository.createOtpForPhone(phone_number);
+
+    return {
+      success: true,
+      message: 'OTP sent to phone. Verify to complete registration.',
+      phone_number: user.phone_number,
+    };
+  } catch (err) {
+    if (err.code === 'P2002') throw new ConflictException('Phone number already exists');
+    throw new InternalServerErrorException('Registration failed');
+  }
+}
+
+
+
+
+
+
+
+
 
 
   private async deleteOldAvatar(filename: string): Promise<void> {
@@ -429,9 +485,11 @@ export class AuthService {
       // };
     }
   }
-  async login({ email, userId }) {
+
+  //-------------------------login-------------------------
+  async login({ phone_number, userId }) {
     try {
-      const payload = { email: email, sub: userId };
+      const payload = { phone_number: phone_number, sub: userId };
 
       const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
       const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
