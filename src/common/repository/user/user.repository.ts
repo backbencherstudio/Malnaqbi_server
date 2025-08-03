@@ -88,7 +88,7 @@ export class UserRepository {
           username: username,
           email: email,
           password: password,
-          type: 'su_admin',
+          type: 'ADMIN',
         },
       });
       return user;
@@ -480,15 +480,15 @@ export class UserRepository {
 
   // validate password
   static async validatePassword({
-    email,
+    phone_number,
     password,
   }: {
-    email: string;
+    phone_number: string;
     password: string;
   }) {
     const user = await prisma.user.findFirst({
       where: {
-        email: email,
+        phone_number: phone_number,
       },
     });
     if (user) {
@@ -509,7 +509,7 @@ export class UserRepository {
           message: 'User not found',
         };
       }
-      if (userDetails.type == 'vendor') {
+      if (userDetails.type == 'ADMIN' || userDetails.type == 'BUSINESS_OWNER') {
         return {
           success: false,
           message: 'User is already a vendor',

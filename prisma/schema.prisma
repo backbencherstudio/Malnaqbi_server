@@ -50,14 +50,17 @@ model User {
   domain     String? @unique
   avatar     String?
 
-  phone_number  String?
-  country       String?
-  state         String?
-  city          String?
-  address       String?
-  zip_code      String?
-  gender        String?
-  date_of_birth DateTime? @db.Date
+  phone_number          String?   @unique
+  country               String?
+  state                 String?
+  city                  String?
+  address               String?
+  zip_code              String?
+  gender                String?
+  date_of_birth         DateTime? @db.Date
+  phone_number_verified Boolean?  @default(false) // whether the user is verified or not
+
+  is_verified Boolean? @default(false) // whether the user is verified or not
 
   // billing id. e.g. stripe customer id
   billing_id String?
@@ -82,8 +85,14 @@ model User {
   roles                Role[]
   role_users           RoleUser[]
   payment_transactions PaymentTransaction[]
+  BusinessOwner        BusinessOwner[]
+  Place                Place[]
+
 
   @@map("users")
+  Product Product[]
+  ExperienceReview ExperienceReview[]
+
 }
 
 model Ucode {
@@ -94,6 +103,8 @@ model Ucode {
 
   user_id String?
   user    User?   @relation(fields: [user_id], references: [id])
+
+  phone_number String?
 
   token      String?
   email      String?
@@ -434,3 +445,191 @@ model UserSetting {
 //   tenant    Organization? @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
 //   @@map("posts")
 // }
+
+// -----------------------//
+// Business Owner Models -//
+//------------------------//
+model BusinessOwner {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  status Int? @default(1) @db.SmallInt
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  business_name String?
+  business_type String?
+
+  id_document   String?
+  trade_license String?
+  Place         Place[]
+
+  @@map("business_owners")
+  Product Product[]
+}
+
+// -----------------------//
+// place categories      -//   where Admin and Business Owner can add places
+//------------------------//
+model categories {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  status Int?    @default(1) @db.SmallInt
+  title  String
+  slug   String? @unique
+  Place  Place[]
+
+  @@map("categories")
+}
+
+// -----------------------//
+// Availability          -//
+//------------------------//
+
+model Availability {
+  id        Int    @id @default(autoincrement())
+  day       Day
+  openTime  String // e.g., "10:00 AM"
+  closeTime String // e.g., "11:00 PM"
+
+  Place Place[]
+}
+
+enum Day {
+  Saturday
+  Sunday
+  Monday
+  Tuesday
+  Wednesday
+  Thursday
+  Friday
+}
+
+// -----------------------//
+// Place Location        -//
+//------------------------//
+
+model NearbyPlace {
+  id         Int     @id @default(autoincrement())
+  name       String
+  type       String // This could represent the type of place (hotel, restaurant, etc.)
+  latitude   Float
+  longitude  Float
+  locationId Int
+  Place      Place[] @relation("PlaceNearby")
+}
+
+// -----------------------//
+// Add places            -//
+//------------------------//
+
+model Place {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  status Int? @default(1) @db.SmallInt
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  business_owner_id String?
+  business_owner    BusinessOwner? @relation(fields: [business_owner_id], references: [id], onDelete: Cascade)
+
+  title        String?
+  image        String?
+  description  String?
+  phone_number String?
+  category_id  String?
+  category     categories?    @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  type         String[]
+  availability Availability[]
+  location     String?
+  latitude     Float?
+  longitude    Float?
+  nearbyPlaces NearbyPlace[]  @relation("PlaceNearby")
+
+
+
+  @@map("places")
+  Product Product[]
+  ExperienceReview ExperienceReview[]
+
+}
+
+
+// -----------------------//
+//  Add products         -//
+//------------------------//
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model Product {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  business_owner_id String?
+  business_owner    BusinessOwner? @relation(fields: [business_owner_id], references: [id], onDelete: Cascade)
+
+  place_id String?
+  place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  title        String?
+  description String?
+  price       Decimal?
+  in_stock      Int? @default(0)
+  type         String?
+  image       String?
+  offer_title String?
+  start_date  DateTime?
+  end_date    DateTime?
+  qr_code_required Boolean? @default(false)
+  offer_active Boolean? @default(false)
+  @@map("products")
+}
+
+// -----------------------//
+//  Review and rating    -//
+//------------------------//
+model ExperienceReview {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  status Int? @default(1) @db.SmallInt
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  place_id String?
+  place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  rating Int?
+  imgage String[]
+  tags String[]
+  review_title String?
+  review_body String? 
+
+  @@map("experience_reviews")
+}
+
+// -----------------------//
+//  Favourite a place    -//
+//------------------------//

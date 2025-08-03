@@ -1,3 +1,5 @@
+import { identity } from "rxjs";
+
 export default () => ({
   app: {
     name: process.env.APP_NAME,
@@ -83,6 +85,10 @@ export default () => ({
     websiteInfo: '/website-info',
     // chat
     attachment: '/attachment',
+    idDocument: '/id-document',
+    tradeLicense: '/trade-license',
+    //places 
+    place: '/place',
   },
 
   defaultUser: {

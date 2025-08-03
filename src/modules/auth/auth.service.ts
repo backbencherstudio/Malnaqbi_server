@@ -1,5 +1,5 @@
 // external imports
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRedis } from '@nestjs-modules/ioredis';
 import Redis from 'ioredis';
@@ -15,6 +15,9 @@ import { SojebStorage } from '../../common/lib/Disk/SojebStorage';
 import { DateHelper } from '../../common/helper/date.helper';
 import { StripePayment } from '../../common/lib/Payment/stripe/StripePayment';
 import { StringHelper } from '../../common/helper/string.helper';
+import { SmsService } from '../sms/sms.service';
+import { CreateBusinessOwnerDto } from './dto/create-business-owner.dto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class AuthService {
@@ -23,8 +26,10 @@ export class AuthService {
     private prisma: PrismaService,
     private mailService: MailService,
     @InjectRedis() private readonly redis: Redis,
-  ) {}
+  ) { }
 
+
+  //get me 
   async me(userId: string) {
     try {
       const user = await this.prisma.user.findFirst({
@@ -76,7 +81,271 @@ export class AuthService {
       };
     }
   }
+  //register step one
+  async registerStepOne({
+    phone_number
+  }: {
+    phone_number: string;
+  }) {
+    try {
+      // Checking if phone number already exists
+      const userPhoneExist = await UserRepository.exist({
+        field: 'phone_number',
+        value: String(phone_number),
+      });
 
+      if (userPhoneExist) {
+        return {
+          success: false,
+          statusCode: 401,
+          message: 'Phone number already exists.',
+        };
+      }
+
+      // otp is generating here
+      const token = await UcodeRepository.createOtpForPhone(phone_number);
+
+      if (!token) {
+        return {
+          success: false,
+          statusCode: 500,
+          message: 'Unable to generate OTP. Please try again.',
+        };
+      }
+
+      const smsService = new SmsService();
+      const sent = await smsService.sendOtpToPhone(phone_number, token);
+
+      if (!sent) {
+        return {
+          success: false,
+          message: 'Failed to send OTP SMS. Please try again.',
+        };
+      }
+
+      return {
+        success: true,
+        message: 'We have sent an OTP code to your phone number via SMS.',
+      };
+
+    } catch (error) {
+      console.error('Error in registerStepOne:', error);
+      return {
+        success: false,
+        message: 'Internal server error. Please try again later.',
+      };
+    }
+  }
+  //register step two
+  async matchPhoneOtp({
+    phone_number,
+    token,
+  }: {
+    phone_number: string;
+    token: string;
+  }) {
+    try {
+      const otpRecord = await this.prisma.ucode.findFirst({
+        where: {
+          phone_number,
+          token,
+          status: 1,
+        },
+      });
+
+      if (!otpRecord) {
+        return {
+          success: false,
+          message: 'Invalid OTP code.',
+        };
+      }
+
+      if (otpRecord.expired_at && new Date() > otpRecord.expired_at) {
+        return {
+          success: false,
+          message: 'OTP expired. Please request a new one.',
+          shouldResendOtp: true,
+        };
+      }
+
+      await this.prisma.ucode.deleteMany({
+        where: { phone_number },
+      });
+
+      let user = await this.prisma.user.findUnique({
+        where: { phone_number },
+      });
+
+      if (user) {
+        await this.prisma.user.update({
+          where: { phone_number },
+          data: { phone_number_verified: true },
+        });
+      }
+
+      if (!user) {
+        user = await this.prisma.user.create({
+          data: { phone_number },
+        });
+      }
+
+      const jwtToken = this.jwtService.sign({
+        userId: user.id,
+        id: user.id,
+        email: user.email,
+        phone_number: user.phone_number,
+      });
+
+
+      return {
+        success: true,
+        message: "Phone number verified successfully.",
+        token: jwtToken,
+      };
+    } catch (error) {
+      console.error('Error in matchPhoneOtp:', error);
+      return {
+        success: false,
+        message: 'Internal server error. Please try again later.',
+      };
+    }
+  }
+  // Finalize registration after phone verification
+  async finalizeRegistration({
+    userId,
+    name,
+    address,
+    avatar,
+    password,
+  }: {
+    userId: string;
+    name: string;
+    address: string;
+    avatar?: Express.Multer.File;
+    password: string;
+  }) {
+    // Validate inputs
+    if (!userId || !name || !address) {
+      throw new BadRequestException('Missing required fields');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.name && user.address) {
+      throw new ConflictException('Account already registered');
+    }
+
+    // Handle avatar upload
+    let avatarFileName: string | undefined;
+    if (avatar) {
+      try {
+        if (user.avatar) {
+          await this.deleteOldAvatar(user.avatar);
+        }
+        avatarFileName = await this.uploadAvatar(avatar);
+      } catch (error) {
+        console.error('Avatar upload failed:', error);
+        throw new InternalServerErrorException('Avatar upload failed');
+      }
+    }
+
+    // Update user
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          name,
+          address,
+          password: hashedPassword,
+          ...(avatarFileName && { avatar: avatarFileName }),
+        },
+      });
+
+      return {
+        success: true,
+        message: 'Registration completed successfully',
+      };
+    } catch (error) {
+      console.error('Registration update failed:', error);
+      throw new InternalServerErrorException('Registration update failed');
+    }
+  }
+  //-----------------registration end for normal user-----------------
+
+
+
+  // ---------------------registration for Business owner-------------------
+
+  async registerBusinessOwner(createBusinessOwnerDto: CreateBusinessOwnerDto) {
+    const { phone_number, name, address, password } = createBusinessOwnerDto;
+
+    // Check if phone number exists
+    const existingPhone = await UserRepository.exist({
+      field: 'phone_number',
+      value: phone_number,
+    });
+    if (existingPhone) throw new ConflictException('Phone number already exists');
+
+    const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
+
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          phone_number,
+          name,
+          address,
+          type: 'BUSINESS_OWNER',
+          password: hashedPassword,
+          is_verified: false,
+        },
+      });
+
+      // Generate OTP & send it
+      const otp = await UcodeRepository.createOtpForPhone(phone_number);
+
+      return {
+        success: true,
+        message: 'OTP sent to phone. Verify to complete registration.',
+        phone_number: user.phone_number,
+      };
+    } catch (err) {
+      if (err.code === 'P2002') throw new ConflictException('Phone number already exists');
+      throw new InternalServerErrorException('Registration failed');
+    }
+  }
+  //---------------------registration for Business owner end-------------------
+
+
+
+
+
+
+
+
+  //-----------------------imgage upload-----------------------
+  private async deleteOldAvatar(filename: string): Promise<void> {
+    await SojebStorage.delete(appConfig().storageUrl.avatar + filename);
+  }
+  private async uploadAvatar(file: Express.Multer.File): Promise<string> {
+    const fileName = `${StringHelper.randomString()}-${file.originalname}`;
+    await SojebStorage.put(
+      appConfig().storageUrl.avatar + fileName,
+      file.buffer,
+    );
+    return fileName;
+  }
+  //-----------------------imgage upload end-----------------------
+
+
+
+  //-----------------------update user-----------------------
   async updateUser(
     userId: string,
     updateUserDto: UpdateUserDto,
@@ -167,22 +436,21 @@ export class AuthService {
       };
     }
   }
-
   async validateUser(
-    email: string,
+    phone_number: string,
     pass: string,
     token?: string,
   ): Promise<any> {
     const _password = pass;
     const user = await this.prisma.user.findFirst({
       where: {
-        email: email,
+        phone_number: phone_number,
       },
     });
 
     if (user) {
       const _isValidPassword = await UserRepository.validatePassword({
-        email: email,
+        phone_number: phone_number,
         password: _password,
       });
       if (_isValidPassword) {
@@ -214,17 +482,22 @@ export class AuthService {
         // };
       }
     } else {
-      throw new UnauthorizedException('Email not found');
+      throw new UnauthorizedException('phone_number not found');
       // return {
       //   success: false,
       //   message: 'Email not found',
       // };
     }
   }
+  //-----------------------update user end-----------------------
 
-  async login({ email, userId }) {
+
+
+
+  //-------------------------login-------------------------
+  async login({ phone_number, userId }) {
     try {
-      const payload = { email: email, sub: userId };
+      const payload = { phone_number: phone_number, sub: userId };
 
       const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
       const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
@@ -256,7 +529,6 @@ export class AuthService {
       };
     }
   }
-
   async refreshToken(user_id: string, refreshToken: string) {
     try {
       const storedToken = await this.redis.get(`refresh_token:${user_id}`);
@@ -300,7 +572,6 @@ export class AuthService {
       };
     }
   }
-
   async revokeRefreshToken(user_id: string) {
     try {
       const storedToken = await this.redis.get(`refresh_token:${user_id}`);
@@ -324,108 +595,81 @@ export class AuthService {
       };
     }
   }
+  //-------------------------login end-------------------------
 
-  async register({
-    name,
-    first_name,
-    last_name,
-    email,
-    password,
-    type,
-  }: {
-    name: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    password: string;
-    type?: string;
-  }) {
+
+  //-----------------------forget password-----------------------
+  async forgotPassword(phone_number) {
     try {
-      // Check if email already exist
-      const userEmailExist = await UserRepository.exist({
-        field: 'email',
-        value: String(email),
+      const user = await UserRepository.exist({
+        field: 'phone_number',
+        value: phone_number,
       });
 
-      if (userEmailExist) {
+      if (user) {
+        const token = await UcodeRepository.createOtpForPhone(phone_number);
         return {
-          statusCode: 401,
-          message: 'Email already exist',
+          success: true,
+          message: 'We have sent an OTP code to your phone_number',
         };
-      }
-
-      const user = await UserRepository.createUser({
-        name: name,
-        first_name: first_name,
-        last_name: last_name,
-        email: email,
-        password: password,
-        type: type,
-      });
-
-      if (user == null && user.success == false) {
+      } else {
         return {
           success: false,
-          message: 'Failed to create account',
+          message: 'phone_number not found',
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message,
+      };
+    }
+  }
+  async resetPassword(body) {
+    try {
+      const { phone_number, token, password } = body;
+      if (!phone_number || !token || !password) {
+        throw new BadRequestException('phone_number, token and password are required');
+      }
+
+      const otpRecord = await this.prisma.ucode.findFirst({
+        where: {
+          phone_number,
+          token,
+          status: 1,
+        },
+      });
+
+      if (!otpRecord) {
+        return {
+          success: false,
+          message: 'Invalid OTP code',
         };
       }
 
-      // create stripe customer account
-      const stripeCustomer = await StripePayment.createCustomer({
-        user_id: user.data.id,
-        email: email,
-        name: name,
-      });
-
-      if (stripeCustomer) {
-        await this.prisma.user.update({
-          where: {
-            id: user.data.id,
-          },
-          data: {
-            billing_id: stripeCustomer.id,
-          },
-        });
+      if (otpRecord.expired_at && new Date() > otpRecord.expired_at) {
+        return {
+          success: false,
+          message: 'OTP expired. Please request a new one.',
+          shouldResendOtp: true,
+        };
       }
 
-      // ----------------------------------------------------
-      // // create otp code
-      // const token = await UcodeRepository.createToken({
-      //   userId: user.data.id,
-      //   isOtp: true,
-      // });
-
-      // // send otp code to email
-      // await this.mailService.sendOtpCodeToEmail({
-      //   email: email,
-      //   name: name,
-      //   otp: token,
-      // });
-
-      // return {
-      //   success: true,
-      //   message: 'We have sent an OTP code to your email',
-      // };
-
-      // ----------------------------------------------------
-
-      // Generate verification token
-      const token = await UcodeRepository.createVerificationToken({
-        userId: user.data.id,
-        email: email,
+      // delete otp after match
+      await this.prisma.ucode.deleteMany({
+        where: { phone_number },
       });
 
-      // Send verification email with token
-      await this.mailService.sendVerificationLink({
-        email,
-        name: email,
-        token: token.token,
-        type: type,
+      // update password
+      const hashedPassword = await bcrypt.hash(password, appConfig().security.salt);
+      await this.prisma.user.update({
+        where: { phone_number },
+        data: { password: hashedPassword },
       });
 
       return {
         success: true,
-        message: 'We have sent a verification link to your email',
+        message: 'Password reset successfully',
       };
     } catch (error) {
       return {
@@ -434,92 +678,9 @@ export class AuthService {
       };
     }
   }
+  //-----------------------forget password end-----------------------
 
-  async forgotPassword(email) {
-    try {
-      const user = await UserRepository.exist({
-        field: 'email',
-        value: email,
-      });
 
-      if (user) {
-        const token = await UcodeRepository.createToken({
-          userId: user.id,
-          isOtp: true,
-        });
-
-        await this.mailService.sendOtpCodeToEmail({
-          email: email,
-          name: user.name,
-          otp: token,
-        });
-
-        return {
-          success: true,
-          message: 'We have sent an OTP code to your email',
-        };
-      } else {
-        return {
-          success: false,
-          message: 'Email not found',
-        };
-      }
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-      };
-    }
-  }
-
-  async resetPassword({ email, token, password }) {
-    try {
-      const user = await UserRepository.exist({
-        field: 'email',
-        value: email,
-      });
-
-      if (user) {
-        const existToken = await UcodeRepository.validateToken({
-          email: email,
-          token: token,
-        });
-
-        if (existToken) {
-          await UserRepository.changePassword({
-            email: email,
-            password: password,
-          });
-
-          // delete otp code
-          await UcodeRepository.deleteToken({
-            email: email,
-            token: token,
-          });
-
-          return {
-            success: true,
-            message: 'Password updated successfully',
-          };
-        } else {
-          return {
-            success: false,
-            message: 'Invalid token',
-          };
-        }
-      } else {
-        return {
-          success: false,
-          message: 'Email not found',
-        };
-      }
-    } catch (error) {
-      return {
-        success: false,
-        message: error.message,
-      };
-    }
-  }
 
   async verifyEmail({ email, token }) {
     try {
@@ -573,7 +734,6 @@ export class AuthService {
       };
     }
   }
-
   async resendVerificationEmail(email: string) {
     try {
       const user = await UserRepository.getUserByEmail(email);
@@ -609,14 +769,13 @@ export class AuthService {
       };
     }
   }
-
   async changePassword({ user_id, oldPassword, newPassword }) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
 
       if (user) {
         const _isValidPassword = await UserRepository.validatePassword({
-          email: user.email,
+          phone_number: user.email,
           password: oldPassword,
         });
         if (_isValidPassword) {
@@ -648,7 +807,6 @@ export class AuthService {
       };
     }
   }
-
   async requestEmailChange(user_id: string, email: string) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
@@ -682,7 +840,6 @@ export class AuthService {
       };
     }
   }
-
   async changeEmail({
     user_id,
     new_email,
@@ -749,7 +906,6 @@ export class AuthService {
       };
     }
   }
-
   async verify2FA(user_id: string, token: string) {
     try {
       const isValid = await UserRepository.verify2FA(user_id, token);
@@ -770,7 +926,6 @@ export class AuthService {
       };
     }
   }
-
   async enable2FA(user_id: string) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
@@ -793,7 +948,6 @@ export class AuthService {
       };
     }
   }
-
   async disable2FA(user_id: string) {
     try {
       const user = await UserRepository.getUserDetails(user_id);
@@ -817,4 +971,41 @@ export class AuthService {
     }
   }
   // --------- end 2FA ---------
+
+
+
+//--------------------share experience--------------------
+  // async shareExperience(userId: string, experienceData: any) {
+  //   try {
+  //     const user = await this.prisma.user.findUnique({
+  //       where: { id: userId },
+  //     });
+
+  //     if (!user) {
+  //       throw new NotFoundException('User not found');
+  //     }
+
+  //     const experience = await this.prisma.experienceReview.create({
+  //       data: {
+  //         user_id: userId,
+  //         title: experienceData.title,
+  //         description: experienceData.description,
+  //         location: experienceData.location,
+  //         date: experienceData.date,
+  //         images: experienceData.images, // Assuming images is an array of image URLs
+  //       },
+  //     });
+
+  //     return {
+  //       success: true,
+  //       message: 'Experience shared successfully',
+  //       data: experience,
+  //     };
+  //   } catch (error) {
+  //     console.error('Error sharing experience:', error);
+  //     throw new InternalServerErrorException('Failed to share experience');
+  //   }
+  // }
+
+
 }
