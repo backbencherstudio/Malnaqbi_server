@@ -88,7 +88,11 @@ model User {
   BusinessOwner        BusinessOwner[]
   Place                Place[]
 
+
   @@map("users")
+  Product Product[]
+  ExperienceReview ExperienceReview[]
+
 }
 
 model Ucode {
@@ -464,6 +468,7 @@ model BusinessOwner {
   Place         Place[]
 
   @@map("business_owners")
+  Product Product[]
 }
 
 // -----------------------//
@@ -511,13 +516,13 @@ enum Day {
 //------------------------//
 
 model NearbyPlace {
-  id         Int      @id @default(autoincrement())
+  id         Int     @id @default(autoincrement())
   name       String
   type       String // This could represent the type of place (hotel, restaurant, etc.)
   latitude   Float
   longitude  Float
   locationId Int
-  Place Place[] @relation("PlaceNearby")
+  Place      Place[] @relation("PlaceNearby")
 }
 
 // -----------------------//
@@ -546,10 +551,85 @@ model Place {
   category     categories?    @relation(fields: [category_id], references: [id], onDelete: Cascade)
   type         String[]
   availability Availability[]
-  location String?
-  latitude   Float?
-  longitude  Float?
+  location     String?
+  latitude     Float?
+  longitude    Float?
   nearbyPlaces NearbyPlace[]  @relation("PlaceNearby")
 
+
+
   @@map("places")
+  Product Product[]
+  ExperienceReview ExperienceReview[]
+
 }
+
+
+// -----------------------//
+//  Add products         -//
+//------------------------//
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+model Product {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  business_owner_id String?
+  business_owner    BusinessOwner? @relation(fields: [business_owner_id], references: [id], onDelete: Cascade)
+
+  place_id String?
+  place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  title        String?
+  description String?
+  price       Decimal?
+  in_stock      Int? @default(0)
+  type         String?
+  image       String?
+  offer_title String?
+  start_date  DateTime?
+  end_date    DateTime?
+  qr_code_required Boolean? @default(false)
+  offer_active Boolean? @default(false)
+  @@map("products")
+}
+
+// -----------------------//
+//  Review and rating    -//
+//------------------------//
+model ExperienceReview {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  status Int? @default(1) @db.SmallInt
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  place_id String?
+  place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
+  rating Int?
+  imgage String[]
+  tags String[]
+  review_title String?
+  review_body String? 
+
+  @@map("experience_reviews")
+}
+
+// -----------------------//
+//  Favourite a place    -//
+//------------------------//

@@ -252,6 +252,23 @@ export class CreatePlaceService {
       include: {
         category: true,
         availability: true,
+        ExperienceReview:{
+          select:
+          {
+            id: true,
+            rating: true,
+            review_title: true,
+            review_body: true,
+            imgage: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+              },
+            },
+          }
+        }
       },
     });
   }
@@ -261,6 +278,23 @@ export class CreatePlaceService {
       include: {
         category: true,
         availability: true,
+        ExperienceReview:{
+          select:
+          {
+            id: true,
+            rating: true,
+            review_title: true,
+            review_body: true,
+            imgage: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+              },
+            },
+          }
+        }
       },
     });
   }

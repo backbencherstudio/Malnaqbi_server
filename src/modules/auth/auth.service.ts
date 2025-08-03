@@ -971,4 +971,41 @@ export class AuthService {
     }
   }
   // --------- end 2FA ---------
+
+
+
+//--------------------share experience--------------------
+  // async shareExperience(userId: string, experienceData: any) {
+  //   try {
+  //     const user = await this.prisma.user.findUnique({
+  //       where: { id: userId },
+  //     });
+
+  //     if (!user) {
+  //       throw new NotFoundException('User not found');
+  //     }
+
+  //     const experience = await this.prisma.experienceReview.create({
+  //       data: {
+  //         user_id: userId,
+  //         title: experienceData.title,
+  //         description: experienceData.description,
+  //         location: experienceData.location,
+  //         date: experienceData.date,
+  //         images: experienceData.images, // Assuming images is an array of image URLs
+  //       },
+  //     });
+
+  //     return {
+  //       success: true,
+  //       message: 'Experience shared successfully',
+  //       data: experience,
+  //     };
+  //   } catch (error) {
+  //     console.error('Error sharing experience:', error);
+  //     throw new InternalServerErrorException('Failed to share experience');
+  //   }
+  // }
+
+
 }
