@@ -85,7 +85,7 @@ export class BusinessOwnerService {
     return fileName;
   }
   //-------------------apply for business owner end-------------------
-  
-  
+
+
 
 }

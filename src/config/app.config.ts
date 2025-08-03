@@ -87,6 +87,8 @@ export default () => ({
     attachment: '/attachment',
     idDocument: '/id-document',
     tradeLicense: '/trade-license',
+    //places 
+    place: '/place',
   },
 
   defaultUser: {

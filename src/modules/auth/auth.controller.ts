@@ -263,7 +263,6 @@ export class AuthController {
   }
 
   // --------------change password---------
-
   @ApiOperation({ summary: 'Forgot password' })
   @Post('forgot-password')
   async forgotPassword(@Body() data: { phone_number: string }) {
@@ -280,13 +279,11 @@ export class AuthController {
       };
     }
   }
-  
-
   @Post('reset-password')
   async resetPasswordd(@Body() body: { phone_number: string; token: string; password: string }) {
     return this.authService.resetPassword(body);
   }
-
+//------------------end change password-------------------
 
   // verify email to verify the email
   @ApiOperation({ summary: 'Verify email' })
