@@ -595,16 +595,30 @@ export class AuthController {
   }
 
   // add or update cart item
-  @Post('add')
+  @Patch('cart/:action')
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  async addToCart(@Req() req : any, @Body() dto: AddToCartDto) {
-    return this.authService.addOrUpdateCart(req.user.userId, dto);
+  async addOrDecreaseQuantity(
+    @Param('action') action: 'add' | 'dec',
+    @Body() dto: AddToCartDto,
+    @Req() req: any,
+  ) {
+    const userId = req?.user?.userId;
+    if (action === 'add') {
+      return this.authService.addOrUpdateCart(userId, dto);
+    } else if (action === 'dec') {
+
+      dto.quantity = -1;
+      return this.authService.addOrUpdateCart(userId, dto);
+    }
+
+    return { success: false, message: 'Invalid action' };
   }
   @Get('YourCart')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  async getCart(@Req() req) {
-    const userId = req.user.id;
+  async getCart(@Req() req: any) {
+    const userId = req.user.userId;
     return this.authService.getCartItems(userId);
   }
 

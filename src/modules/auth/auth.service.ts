@@ -1089,12 +1089,27 @@ async addOrUpdateCart(userId: string, dto: AddToCartDto) {
   });
 
   if (existing) {
+    let updatedQuantity = existing.quantity + (dto.quantity || 1);
+
+    // If quantity is 0 or less, remove the item from the cart
+    if (updatedQuantity <= 0) {
+      await this.prisma.cartItem.delete({
+        where: { id: existing.id },
+      });
+      return {
+        success: true,
+        message: 'Item removed from cart',
+      };
+    }
+
+    // Update the quantity if it's still greater than 0
     return this.prisma.cartItem.update({
       where: { id: existing.id },
-      data: { quantity: existing.quantity + (dto.quantity || 1) },
+      data: { quantity: updatedQuantity },
     });
   }
 
+  // If the item doesn't exist, create a new cart item
   return this.prisma.cartItem.create({
     data: {
       user_id: userId,
@@ -1103,6 +1118,8 @@ async addOrUpdateCart(userId: string, dto: AddToCartDto) {
     },
   });
 }
+
+
 async getCartItems(userId: string) {
   const cartItems = await this.prisma.cartItem.findMany({
     where: { user_id: userId },
