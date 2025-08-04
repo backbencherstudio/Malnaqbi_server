@@ -4,19 +4,21 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Param,
   Patch,
   Post,
   Req,
   Res,
   UnauthorizedException,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -26,6 +28,10 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import appConfig from '../../config/app.config';
 import { AuthGuard } from '@nestjs/passport';
 import { CreateBusinessOwnerDto } from './dto/create-business-owner.dto';
+import { SojebStorage } from 'src/common/lib/Disk/SojebStorage';
+import { CreateExperienceDto } from './dto/create-expreience-dto';
+import { log } from 'console';
+import { AddToCartDto } from './dto/creat-cart-dto';
 
 
 
@@ -283,7 +289,7 @@ export class AuthController {
   async resetPasswordd(@Body() body: { phone_number: string; token: string; password: string }) {
     return this.authService.resetPassword(body);
   }
-//------------------end change password-------------------
+  //------------------end change password-------------------
 
   // verify email to verify the email
   @ApiOperation({ summary: 'Verify email' })
@@ -327,7 +333,7 @@ export class AuthController {
       };
     }
   }
-   //-----------------This wont be used for now-----------------//
+  //-----------------This wont be used for now-----------------//
   // reset password if user forget the password ----------------//
   // @ApiOperation({ summary: 'Reset password' })--------------//
   // @Post('reset-password')-----------------------------------//
@@ -532,4 +538,75 @@ export class AuthController {
     }
   }
   // --------- end 2FA ---------
+
+
+  // share experience
+  @Post('share')
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileFieldsInterceptor([{ name: 'images', maxCount: 5 }])
+  )
+  async shareExperience(
+    @Req() req: any,
+    @Body() body: CreateExperienceDto,
+    @UploadedFiles() files: { images?: Express.Multer.File[] },
+  ) {
+    const userId = req?.user?.userId;
+    console.log('User ID:', userId);
+
+
+    if (body.tags && typeof body.tags === 'string') {
+      try {
+        body.tags = JSON.parse(body.tags);
+      } catch {
+        body.tags = [];
+      }
+    }
+
+    const uploadedFileNames: string[] = [];
+    if (files?.images && files.images.length > 0) {
+      for (const file of files.images) {
+        const fileName = `${Date.now()}-${file.originalname}`;
+        await SojebStorage.put(`${appConfig().storageUrl.experience}/${fileName}`, file.buffer);
+        uploadedFileNames.push(fileName);
+      }
+    }
+
+    return this.authService.shareExperience(userId, body, uploadedFileNames);
+  }
+  // toggle favourite place
+  @Post(':placeId/fav')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async toggleFavourite(@Param('placeId') placeId: string, @Req() req: any) {
+    const userId = req?.user?.userId;
+
+    return this.authService.toggleFavourite(userId, placeId);
+  }
+
+  @Get('favourites')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async getUserFavourites(@Req() req: any) {
+    const userId = req.user.id;
+    return this.authService.getFavouritePlaces(userId);
+  }
+
+  // add or update cart item
+  @Post('add')
+  @UseGuards(JwtAuthGuard)
+  async addToCart(@Req() req : any, @Body() dto: AddToCartDto) {
+    return this.authService.addOrUpdateCart(req.user.userId, dto);
+  }
+  @Get('YourCart')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async getCart(@Req() req) {
+    const userId = req.user.id;
+    return this.authService.getCartItems(userId);
+  }
+
+
 }

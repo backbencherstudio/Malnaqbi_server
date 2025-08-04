@@ -18,6 +18,8 @@ import { StringHelper } from '../../common/helper/string.helper';
 import { SmsService } from '../sms/sms.service';
 import { CreateBusinessOwnerDto } from './dto/create-business-owner.dto';
 import * as bcrypt from 'bcrypt';
+import { CreateExperienceDto } from './dto/create-expreience-dto';
+import { AddToCartDto } from './dto/creat-cart-dto';
 
 @Injectable()
 export class AuthService {
@@ -975,37 +977,172 @@ export class AuthService {
 
 
 //--------------------share experience--------------------
-  // async shareExperience(userId: string, experienceData: any) {
-  //   try {
-  //     const user = await this.prisma.user.findUnique({
-  //       where: { id: userId },
-  //     });
+async shareExperience(userId: string, dto: CreateExperienceDto, imageFiles: string[]) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
 
-  //     if (!user) {
-  //       throw new NotFoundException('User not found');
-  //     }
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
 
-  //     const experience = await this.prisma.experienceReview.create({
-  //       data: {
-  //         user_id: userId,
-  //         title: experienceData.title,
-  //         description: experienceData.description,
-  //         location: experienceData.location,
-  //         date: experienceData.date,
-  //         images: experienceData.images, // Assuming images is an array of image URLs
-  //       },
-  //     });
+      const experience = await this.prisma.experienceReview.create({
+        data: {
+          user_id: userId,
+          place_id: dto.place_id,
+          rating: dto.rating,
+          tags: dto.tags || [],
+          review_title: dto.review_title,
+          review_body: dto.review_body,
+          imgage: imageFiles, // ✅ storing file names
+        },
+      });
 
-  //     return {
-  //       success: true,
-  //       message: 'Experience shared successfully',
-  //       data: experience,
-  //     };
-  //   } catch (error) {
-  //     console.error('Error sharing experience:', error);
-  //     throw new InternalServerErrorException('Failed to share experience');
-  //   }
-  // }
+      // ✅ Return full URLs for images
+      const experienceWithUrls = {
+        ...experience,
+        imgage: experience.imgage.map((fileName) =>
+          SojebStorage.url(`${appConfig().storageUrl.experience}/${fileName}`),
+        ),
+      };
+
+      return {
+        success: true,
+        message: 'Experience shared successfully',
+        data: experienceWithUrls,
+      };
+    } catch (error) {
+      console.error('Error sharing experience:', error);
+      throw new InternalServerErrorException('Failed to share experience');
+    }
+  }
+
+//--------------------share experience end--------------------
+
+//--------------------make a favourite place--------------------
+async toggleFavourite(userId: string, placeId: string) {
+  const existing = await this.prisma.favouritePlace.findUnique({
+    where: {
+      user_id_place_id: {
+        user_id: userId,
+        place_id: placeId,
+      },
+    },
+  });
+
+  if (existing) {
+    await this.prisma.favouritePlace.delete({
+      where: { id: existing.id },
+    });
+    return { success: true, message: 'Removed from favourites' };
+  }
+
+  await this.prisma.favouritePlace.create({
+    data: { user_id: userId, place_id: placeId },
+  });
+
+  return { success: true, message: 'Added to favourites' };
+}
+async getFavouritePlaces(userId: string) {
+  const favourites = await this.prisma.favouritePlace.findMany({
+    where: { user_id: userId },
+    include: {
+      place: {
+        select: {
+          id: true,
+          title: true,
+          location: true,
+          image: true,
+        },
+      },
+    },
+  });
+
+  if (!favourites || favourites.length === 0) {
+    return { success: false, message: 'No favourite places found' };
+  }
+
+  const formattedFavourites = favourites.map(fav => ({
+    ...fav.place,
+    image_url: fav.place.image
+      ? SojebStorage.url(`${appConfig().storageUrl.place}/${fav.place.image}`)
+      : null,
+  }));
+
+  return { success: true, data: formattedFavourites };
+}
+//--------------------make a favourite place end--------------------
+
+
+
+
+//--------------------get user cart items--------------------
+async addOrUpdateCart(userId: string, dto: AddToCartDto) {
+  const existing = await this.prisma.cartItem.findUnique({
+    where: {
+      user_id_product_id: {
+        user_id: userId,
+        product_id: dto.product_id,
+      },
+    },
+  });
+
+  if (existing) {
+    return this.prisma.cartItem.update({
+      where: { id: existing.id },
+      data: { quantity: existing.quantity + (dto.quantity || 1) },
+    });
+  }
+
+  return this.prisma.cartItem.create({
+    data: {
+      user_id: userId,
+      product_id: dto.product_id,
+      quantity: dto.quantity || 1,
+    },
+  });
+}
+async getCartItems(userId: string) {
+  const cartItems = await this.prisma.cartItem.findMany({
+    where: { user_id: userId },
+    include: {
+      product: {
+        select: {
+          id: true,
+          title: true,
+          price: true,
+          in_stock: true,
+          image: true,
+        },
+      },
+    },
+  });
+
+  const total_price = cartItems.reduce((sum, item) => {
+    return sum + (item.product.price * item.quantity);
+  }, 0);
+
+  const formatted = cartItems.map((item) => ({
+    id: item.id,
+    product_id: item.product.id,
+    title: item.product.title,
+    price: item.product.price,
+    in_stock: item.product.in_stock,
+    quantity: item.quantity,
+    total_price: item.product.price * item.quantity,
+    image_url: item.product.image
+      ? SojebStorage.url(`${appConfig().storageUrl.place.replace(/\/$/, '')}/${item.product.image}`)
+      : null,
+  }));
+
+  return {
+    success: true,
+    data: formatted,
+    total_price: total_price, 
+  };
+}
+//--------------------get user cart items end--------------------
 
 
 }

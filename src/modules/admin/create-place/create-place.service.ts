@@ -96,12 +96,12 @@ export class CreatePlaceService {
       return {
         success: true,
         message: 'Place created successfully',
-        data: {
-          ...place,
-          latitude,
-          longitude,
-          image: imageUrl,
-        },
+        // data: {
+        //   ...place,
+        //   latitude,
+        //   longitude,
+        //   image: imageUrl,
+        // },
       };
     } catch (error) {
       console.error('Error creating place:', error);
@@ -155,14 +155,14 @@ export class CreatePlaceService {
 
 
   //------------------get all places------------------//
+
   async findAll() {
-    return this.prisma.place.findMany({
+    const places = await this.prisma.place.findMany({
       include: {
         category: true,
         availability: true,
         ExperienceReview: {
-          select:
-          {
+          select: {
             id: true,
             rating: true,
             review_title: true,
@@ -175,20 +175,44 @@ export class CreatePlaceService {
                 avatar: true,
               },
             },
-          }
-        }
+          },
+        },
+        _count: {
+          select: {
+            ExperienceReview: true,
+          },
+        },
       },
     });
+
+    const result = places.map((place) => {
+      const reviews = place.ExperienceReview;
+      const totalReviews = reviews.length;
+      const avgRating =
+        totalReviews > 0
+          ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / totalReviews
+          : 0;
+
+      return {
+        ...place,
+        avgRating: parseFloat(avgRating.toFixed(1)),
+        totalReviews: place._count.ExperienceReview,
+        image_url: place.image
+          ? SojebStorage.url(`${appConfig().storageUrl.place}/${place.image}`)
+          : null,
+      };
+    });
+
+    return result;
   }
   async findOne(id: string) {
-    return this.prisma.place.findUnique({
+    const place = await this.prisma.place.findUnique({
       where: { id },
       include: {
         category: true,
         availability: true,
         ExperienceReview: {
-          select:
-          {
+          select: {
             id: true,
             rating: true,
             review_title: true,
@@ -201,7 +225,7 @@ export class CreatePlaceService {
                 avatar: true,
               },
             },
-          }
+          },
         },
         Product: {
           select: {
@@ -219,13 +243,43 @@ export class CreatePlaceService {
             offer_active: true,
           },
         },
+        _count: {
+          select: {
+            ExperienceReview: true,
+          },
+        },
       },
     });
+
+    if (!place) return null;
+
+    const reviews = place.ExperienceReview;
+    const totalReviews = reviews.length;
+    const avgRating =
+      totalReviews > 0
+        ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / totalReviews
+        : 0;
+
+
+
+    return {
+      ...place,
+      avgRating: parseFloat(avgRating.toFixed(1)),
+      totalReviews: place._count.ExperienceReview,
+      image_url: place.image
+        ? SojebStorage.url(`${appConfig().storageUrl.place}/${place.image}`)
+        : null, // Return the full image URL
+    };
   }
+
+
+
   //--------------end of get all places-----------------//
 
 
   //need to test this service
+
+
   async update(id: string, updatePlaceDto: CreateCreatePlaceDto) {
     const { title, description, phone_number, category_id, availability, location, type } = updatePlaceDto;
 
@@ -331,7 +385,7 @@ export class CreatePlaceService {
     return {
       success: true,
       message: 'Product created successfully',
-      data: product,
+      // data: product,
     };
   }
   private async uploadProductImage(file: Express.Multer.File): Promise<string> {
@@ -346,9 +400,9 @@ export class CreatePlaceService {
   }
   //---------------end create product------------------//
 
-
+  //---------------start get all products------------------//
   async getAllProducts() {
-    return this.prisma.product.findMany({
+    const products = await this.prisma.product.findMany({
       include: {
         place: {
           select: {
@@ -359,10 +413,24 @@ export class CreatePlaceService {
         },
       },
     });
-  }
 
+    const formattedProducts = products.map((product) => ({
+      ...product,
+      image_url: product.image
+        ? SojebStorage.url(`${appConfig().storageUrl.place.replace(/\/$/, '')}/${product.image}`)
+        : null,
+      place: {
+        ...product.place,
+        place_image_url: product.place.image
+          ? SojebStorage.url(`${appConfig().storageUrl.place.replace(/\/$/, '')}/${product.place.image}`)
+          : null,
+      },
+    }));
+
+    return formattedProducts;
+  }
   async getProductById(id: string) {
-    return this.prisma.product.findUnique({
+    const product = await this.prisma.product.findUnique({
       where: { id },
       include: {
         place: {
@@ -374,7 +442,25 @@ export class CreatePlaceService {
         },
       },
     });
+
+    if (!product) return null;
+
+    // Format the product and place image URLs
+    return {
+      ...product,
+      image_url: product.image
+        ? SojebStorage.url(`${appConfig().storageUrl.place.replace(/\/$/, '')}/${product.image}`) // Format image URL for product
+        : null,
+      place: {
+        ...product.place,
+        place_image_url: product.place.image
+          ? SojebStorage.url(`${appConfig().storageUrl.place.replace(/\/$/, '')}/${product.place.image}`) // Format image URL for place
+          : null,
+      },
+    };
   }
+  //---------------end get all products------------------//
+
 
 
 }

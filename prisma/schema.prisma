@@ -93,6 +93,8 @@ model User {
   Product Product[]
   ExperienceReview ExperienceReview[]
 
+  FavouritePlace FavouritePlace[]
+  CartItem CartItem[]
 }
 
 model Ucode {
@@ -562,6 +564,7 @@ model Place {
   Product Product[]
   ExperienceReview ExperienceReview[]
 
+  FavouritePlace FavouritePlace[]
 }
 
 
@@ -602,6 +605,7 @@ model Product {
   qr_code_required Boolean? @default(false)
   offer_active Boolean? @default(false)
   @@map("products")
+  CartItem CartItem[]
 }
 
 // -----------------------//
@@ -633,3 +637,37 @@ model ExperienceReview {
 // -----------------------//
 //  Favourite a place    -//
 //------------------------//
+
+model FavouritePlace {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now())
+  deleted_at DateTime?
+
+  user_id String?
+  user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  place_id String?
+  place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
+  @@unique([user_id, place_id])
+  @@map("favourite_places")
+}
+
+// -----------------------//
+//  Add to cart          -//
+//------------------------//
+model CartItem {
+  id         String   @id @default(cuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  user_id    String
+  product_id String
+  quantity   Int      @default(1)
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, product_id]) 
+  @@map("cart_items")
+}
