@@ -89,6 +89,7 @@ export default () => ({
     tradeLicense: '/trade-license',
     //places 
     place: '/place',
+    experience: '/experience',
   },
 
   defaultUser: {

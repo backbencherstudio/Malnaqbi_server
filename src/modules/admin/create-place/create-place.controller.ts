@@ -2,13 +2,15 @@ import { Controller, Post, Body, UploadedFiles, UseInterceptors, UseGuards, Req,
 import { CreatePlaceService } from './create-place.service';
 import { CreateCreatePlaceDto } from './dto/create-create-place.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
 import { JwtAuthGuard } from 'src/modules/auth/guards/jwt-auth.guard';
+import { CreateProductDto } from './dto/create-product-dto';
 
 @Controller('create-place')
 export class CreatePlaceController {
   constructor(private readonly createPlaceService: CreatePlaceService) {}
 
+  //------------------------create place------------------------
   @Post()
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -34,8 +36,56 @@ export class CreatePlaceController {
       placeImage,
     );
   }
+//------------------------create place end------------------------
 
- 
+
+    //------------------------create product------------------------
+@Post('product')
+@ApiBearerAuth()
+@ApiConsumes('multipart/form-data')
+@UseGuards(JwtAuthGuard)
+@UseInterceptors(FileFieldsInterceptor([{ name: 'images', maxCount: 1 }]))
+async createProduct(
+  @Body() body: CreateProductDto,
+  @UploadedFiles() files: { images?: Express.Multer.File[] },
+  @Req() req: any,
+) {
+  const imageFiles = files?.images;
+
+  if (!imageFiles || imageFiles.length === 0) {
+    return { success: false, message: 'No image uploaded' };
+  }
+
+  return this.createPlaceService.createProduct(body, imageFiles, req.user.id);
+}
+  //------------------------create product end ------------------------
+
+
+
+
+  //---------------start get all products------------------//
+@Get('products')
+async getAllProducts() {
+  try {
+    return await this.createPlaceService.getAllProducts();
+  } catch (error) {
+    throw new InternalServerErrorException('Failed to retrieve products');
+  }
+}
+
+@Get('products/:id')
+async getProductById(@Param('id') id: string) {
+  const product = await this.createPlaceService.getProductById(id);
+  if (!product) {
+    throw new BadRequestException('Product not found');
+  }
+  return product;
+}
+
+//---------------end get all products------------------//
+
+
+ //------------------For Places------------------//
   @Get()
   async getAllPlaces() {
     try {
@@ -68,5 +118,8 @@ export class CreatePlaceController {
     }
     return updatedPlace;
   }
+//------------------For Places End------------------//
+
+
 
 }
