@@ -5,101 +5,11 @@ import * as path from 'path';
 import appConfig from 'src/config/app.config';
 import { SojebStorage } from 'src/common/lib/Disk/SojebStorage';
 import axios from 'axios';
+import { CreateProductDto } from './dto/create-product-dto';
+import e from 'express';
 @Injectable()
 export class CreatePlaceService {
   constructor(private readonly prisma: PrismaService) { }
-  // async create(
-  //   userId: string,
-  //   createPlaceDto: CreateCreatePlaceDto,
-  //   image?: Express.Multer.File
-  // ) {
-  //   const user = await this.prisma.user.findUnique({
-  //     where: { id: userId },
-  //     select: { id: true, type: true },
-  //   });
-
-  //   if (!user) {
-  //     return {
-  //       success: false,
-  //       message: 'User not found',
-  //     };
-  //   }
-
-  //   if (user.type !== 'BUSINESS_OWNER' && user.type !== 'ADMIN') {
-  //     return {
-  //       success: false,
-  //       message: 'Unauthorized user type',
-  //     };
-  //   }
-
-  //   let {
-  //     title,
-  //     description,
-  //     phone_number,
-  //     category_id,
-  //     availability,
-  //     // locationId,
-  //     // latitude,
-  //     // longitude,
-  //     location,
-  //     type,
-  //   } = createPlaceDto;
-
-
-
-  // // Convert latitude and longitude to numbers if they are passed as strings
-  // // latitude = parseFloat(latitude as any);  // Convert to number
-  // // longitude = parseFloat(longitude as any);  // Convert to number
-
-  // //   console.log('Latitude:', latitude);
-  // //   console.log('Longitude:', longitude);
-  // //   console.log('Latitude Type:', typeof latitude);
-  // //   console.log('Longitude Type:', typeof longitude);
-  // //   if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-  // //     throw new Error('Invalid latitude or longitude values');
-  // //   }
-
-  //   let imageFileName: string | undefined;
-
-  //   if (image) {
-  //     imageFileName = await this.uploadImage(image);
-  //   }
-
-  //   try {
-  //     const place = await this.prisma.place.create({
-  //       data: {
-  //         title,
-  //         description,
-  //         phone_number,
-  //         category_id,
-  //         image: imageFileName,
-  //         type,
-  //         location,
-  //         user_id: userId,
-  //         availability: {
-  //           create: availability?.map((item) => ({
-  //             day: item.day,
-  //             openTime: item.openTime,
-  //             closeTime: item.closeTime,
-  //           })),
-  //         },
-  //       },
-  //     });
-
-  //     return {
-  //       success: true,
-  //       message: 'Place created successfully',
-  //       data: place,
-  //     };
-  //   } catch (error) {
-  //     console.error('Error creating place:', error);
-  //     return {
-  //       success: false,
-  //       message: 'There was an error creating the place',
-  //     };
-  //   }
-  // }
-
   async create(
     userId: string,
     createPlaceDto: CreateCreatePlaceDto,
@@ -115,13 +25,6 @@ export class CreatePlaceService {
     });
 
     if (!user || !existingBusinessOwner) {
-      return {
-        success: false,
-        message: 'User not found',
-      };
-    }
-
-    if (!user) {
       return {
         success: false,
         message: 'User not found',
@@ -186,6 +89,10 @@ export class CreatePlaceService {
         },
       });
 
+      const imageUrl = place.image
+        ? SojebStorage.url(`${appConfig().storageUrl.place}/${place.image}`)
+        : null;
+
       return {
         success: true,
         message: 'Place created successfully',
@@ -193,6 +100,7 @@ export class CreatePlaceService {
           ...place,
           latitude,
           longitude,
+          image: imageUrl,
         },
       };
     } catch (error) {
@@ -252,7 +160,7 @@ export class CreatePlaceService {
       include: {
         category: true,
         availability: true,
-        ExperienceReview:{
+        ExperienceReview: {
           select:
           {
             id: true,
@@ -278,7 +186,7 @@ export class CreatePlaceService {
       include: {
         category: true,
         availability: true,
-        ExperienceReview:{
+        ExperienceReview: {
           select:
           {
             id: true,
@@ -294,7 +202,23 @@ export class CreatePlaceService {
               },
             },
           }
-        }
+        },
+        Product: {
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            price: true,
+            in_stock: true,
+            type: true,
+            image: true,
+            offer_title: true,
+            start_date: true,
+            end_date: true,
+            qr_code_required: true,
+            offer_active: true,
+          },
+        },
       },
     });
   }
@@ -336,6 +260,123 @@ export class CreatePlaceService {
   }
 
 
+  //---------------start create product------------------//
+  async createProduct(
+    createProductDto: CreateProductDto,
+    imageFiles: Express.Multer.File[],
+    userId: string
+  ) {
+    const {
+      title,
+      description,
+      price,
+      in_stock,
+      type,
+      offer_title,
+      start_date,
+      end_date,
+      place_id,
+      qr_code_required,
+      offer_active,
+    } = createProductDto;
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || (user.type !== 'BUSINESS_OWNER' && user.type !== 'ADMIN')) {
+      return { success: false, message: 'Unauthorized: Only Business Owners and Admins can create products' };
+    }
+
+    const existingBusinessOwner = await this.prisma.businessOwner.findFirst({
+      where: { user_id: userId }
+    });
+    if (!existingBusinessOwner) {
+      return { success: false, message: 'Business Owner not found for the user' };
+    }
+
+    const place = await this.prisma.place.findUnique({
+      where: { id: place_id },
+      select: { id: true, business_owner_id: true },
+    });
+
+    if (!place) {
+      return { success: false, message: 'Place not found' };
+    }
+
+    if (place.business_owner_id !== existingBusinessOwner.id) {
+      return { success: false, message: 'Unauthorized: You can only create products for your own places' };
+    }
+
+    const imageName = await this.uploadProductImage(imageFiles[0]);
+
+    const product = await this.prisma.product.create({
+      data: {
+        title,
+        description,
+        price,
+        in_stock,
+        user_id: userId,
+        business_owner_id: existingBusinessOwner.id,
+        type,
+        image: imageName,
+        offer_title,
+        start_date,
+        place_id,
+        end_date,
+        qr_code_required,
+        offer_active,
+      },
+    });
+
+    product.image = SojebStorage.url(`${appConfig().storageUrl.place}/${imageName}`);
+
+    return {
+      success: true,
+      message: 'Product created successfully',
+      data: product,
+    };
+  }
+  private async uploadProductImage(file: Express.Multer.File): Promise<string> {
+    const fileName = `${Date.now()}-${file.originalname}`;
+
+    await SojebStorage.put(
+      `${appConfig().storageUrl.place}/${fileName}`,
+      file.buffer
+    );
+
+    return fileName;
+  }
+  //---------------end create product------------------//
+
+
+  async getAllProducts() {
+    return this.prisma.product.findMany({
+      include: {
+        place: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getProductById(id: string) {
+    return this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        place: {
+          select: {
+            id: true,
+            title: true,
+            image: true,
+          },
+        },
+      },
+    });
+  }
 
 
 }
+
+

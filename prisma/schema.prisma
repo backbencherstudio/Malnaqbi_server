@@ -592,7 +592,7 @@ model Product {
 
   title        String?
   description String?
-  price       Decimal?
+  price        Float?
   in_stock      Int? @default(0)
   type         String?
   image       String?
