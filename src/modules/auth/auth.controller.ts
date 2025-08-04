@@ -576,7 +576,7 @@ export class AuthController {
 
     return this.authService.shareExperience(userId, body, uploadedFileNames);
   }
-  // toggle favourite place
+  //--------------------make a favourite place--------------------
   @Post(':placeId/fav')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -585,7 +585,7 @@ export class AuthController {
 
     return this.authService.toggleFavourite(userId, placeId);
   }
-
+//--------------------get user favourite places--------------------
   @Get('favourites')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -593,8 +593,7 @@ export class AuthController {
     const userId = req.user.id;
     return this.authService.getFavouritePlaces(userId);
   }
-
-  // add or update cart item
+//--------------------get user cart items--------------------
   @Patch('cart/:action')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -614,6 +613,7 @@ export class AuthController {
 
     return { success: false, message: 'Invalid action' };
   }
+  //--------------------get user cart items--------------------
   @Get('YourCart')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
