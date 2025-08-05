@@ -1,19 +1,23 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsString, IsNotEmpty } from 'class-validator';
 
-export class CreateMessageDto {
+ export class MessageToAdminDto {
+  @IsString()
   @IsNotEmpty()
-  @IsString()
-  @ApiProperty()
-  receiver_id: string;
+  userId: string;
 
+  @IsString()
   @IsNotEmpty()
-  @IsString()
-  @ApiProperty()
-  conversation_id: string;
+  message: string;
+}
 
-  @IsOptional()
+
+export class MessageToUserDto {
   @IsString()
-  @ApiProperty()
-  message?: string;
+  adminId: string;
+
+  @IsString()
+  userId: string;
+
+  @IsString()
+  message: string;
 }

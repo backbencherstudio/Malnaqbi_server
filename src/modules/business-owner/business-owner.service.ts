@@ -88,4 +88,58 @@ export class BusinessOwnerService {
 
 
 
+
+
+  //------------------product management business owner-------------------
+
+
+async getAllOrders(userId: string) {
+  try {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },  
+      select: { id: true, name: true, email: true, type: true },
+    });
+
+    if (!user) {
+      return {
+        success: false,
+        message: 'User not found',
+      };
+    }
+
+    if (user.type !== 'business_owner') {
+      return {
+        success: false,
+        message: 'User is not a business owner',
+      };
+    }
+
+    const orders = await this.prisma.order.findMany({
+      include: {
+        cart_items: {
+          select: {
+            product_id: true,
+            quantity: true,
+           
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      orders,
+    };
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+
+    throw new InternalServerErrorException('Failed to fetch orders');
+  }
+}
+
+
 }

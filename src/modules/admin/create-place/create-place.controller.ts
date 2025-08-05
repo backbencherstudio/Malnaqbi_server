@@ -16,7 +16,7 @@ export class CreatePlaceController {
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileFieldsInterceptor([
-      { name: 'place', maxCount: 1 }, 
+      { name: 'img', maxCount: 1 }, 
     ])
   )
   async createPlace(
@@ -27,6 +27,8 @@ export class CreatePlaceController {
     // if (typeof body.availability === 'string') {
     //   body.availability = JSON.parse(body.availability);
     // }
+    console.log('Received body:', body);
+    
     
     const placeImage = files?.place?.[0]; 
 

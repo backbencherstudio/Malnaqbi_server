@@ -87,14 +87,15 @@ model User {
   payment_transactions PaymentTransaction[]
   BusinessOwner        BusinessOwner[]
   Place                Place[]
-
-
-  @@map("users")
-  Product Product[]
-  ExperienceReview ExperienceReview[]
+  Product              Product[]
+  ExperienceReview     ExperienceReview[]
 
   FavouritePlace FavouritePlace[]
-  CartItem CartItem[]
+  CartItem       CartItem[]
+
+  Order Order[]
+
+  @@map("users")
 }
 
 model Ucode {
@@ -468,9 +469,9 @@ model BusinessOwner {
   id_document   String?
   trade_license String?
   Place         Place[]
+  Product       Product[]
 
   @@map("business_owners")
-  Product Product[]
 }
 
 // -----------------------//
@@ -545,28 +546,25 @@ model Place {
   business_owner_id String?
   business_owner    BusinessOwner? @relation(fields: [business_owner_id], references: [id], onDelete: Cascade)
 
-  title        String?
-  image        String?
-  description  String?
-  phone_number String?
-  category_id  String?
-  category     categories?    @relation(fields: [category_id], references: [id], onDelete: Cascade)
-  type         String[]
-  availability Availability[]
-  location     String?
-  latitude     Float?
-  longitude    Float?
-  nearbyPlaces NearbyPlace[]  @relation("PlaceNearby")
-
-
-
-  @@map("places")
-  Product Product[]
+  title            String?
+  image            String?
+  description      String?
+  phone_number     String?
+  category_id      String?
+  category         categories?        @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  type             String[]
+  availability     Availability[]
+  location         String?
+  latitude         Float?
+  longitude        Float?
+  nearbyPlaces     NearbyPlace[]      @relation("PlaceNearby")
+  Product          Product[]
   ExperienceReview ExperienceReview[]
 
   FavouritePlace FavouritePlace[]
-}
 
+  @@map("places")
+}
 
 // -----------------------//
 //  Add products         -//
@@ -583,7 +581,6 @@ model Product {
   updated_at DateTime  @default(now())
   deleted_at DateTime?
 
-
   user_id String?
   user    User?   @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -593,19 +590,21 @@ model Product {
   place_id String?
   place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
 
-  title        String?
-  description String?
-  price        Float?
-  in_stock      Int? @default(0)
-  type         String?
-  image       String?
-  offer_title String?
-  start_date  DateTime?
-  end_date    DateTime?
-  qr_code_required Boolean? @default(false)
-  offer_active Boolean? @default(false)
+  title            String?
+  description      String?
+  price            Float?
+  in_stock         Int?       @default(0)
+  type             String?
+  image            String?
+  offer_title      String?
+  start_date       DateTime?
+  end_date         DateTime?
+  qr_code_required Boolean?   @default(false)
+  offer_active     Boolean?   @default(false)
+  CartItem         CartItem[]
+  Order            Order[]
+
   @@map("products")
-  CartItem CartItem[]
 }
 
 // -----------------------//
@@ -625,11 +624,11 @@ model ExperienceReview {
   place_id String?
   place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
 
-  rating Int?
-  imgage String[]
-  tags String[]
+  rating       Int?
+  imgage       String[]
+  tags         String[]
   review_title String?
-  review_body String? 
+  review_body  String?
 
   @@map("experience_reviews")
 }
@@ -649,6 +648,7 @@ model FavouritePlace {
 
   place_id String?
   place    Place?  @relation(fields: [place_id], references: [id], onDelete: Cascade)
+
   @@unique([user_id, place_id])
   @@map("favourite_places")
 }
@@ -663,11 +663,40 @@ model CartItem {
 
   user_id    String
   product_id String
-  quantity   Int      @default(1)
+  quantity   Int    @default(1)
 
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  product    Product  @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  Order   Order[] @relation("OrderCartItems")
 
-  @@unique([user_id, product_id]) 
+  @@unique([user_id, product_id])
   @@map("cart_items")
+}
+
+// -----------------------//
+//  Order model          -//
+//------------------------//
+model Order {
+  id         String    @id @default(cuid())
+  created_at DateTime  @default(now())
+  updated_at DateTime  @default(now()) @updatedAt
+  deleted_at DateTime?
+
+  user_id   String
+  user_name String?
+  status    String  @default("pending")
+
+  product_id     String?
+  product_title  String?
+  payment_method String? @default("wallet")
+  payment_status String? @default("pending")
+  commission     Float?  @default(0.0)
+
+  product     Product? @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  total_price Float?
+
+  cart_items CartItem[] @relation("OrderCartItems")
+
+  @@map("orders")
 }

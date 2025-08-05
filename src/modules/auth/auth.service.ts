@@ -270,6 +270,24 @@ export class AuthService {
         },
       });
 
+      //create stripe customer
+     const stripeCustomer =  await StripePayment.createCustomer({
+        user_id: userId,
+        email: user.email,
+        name: user.name,
+      });
+      console.log('Stripe customer created successfully', stripeCustomer);
+      if(stripeCustomer){
+         await this.prisma.user.update({
+            where: {
+              id: user.id,
+            },
+            data: {
+              billing_id: stripeCustomer.id,
+            },
+          });
+      }
+
       return {
         success: true,
         message: 'Registration completed successfully',
@@ -1091,7 +1109,6 @@ async addOrUpdateCart(userId: string, dto: AddToCartDto) {
   if (existing) {
     let updatedQuantity = existing.quantity + (dto.quantity || 1);
 
-    // If quantity is 0 or less, remove the item from the cart
     if (updatedQuantity <= 0) {
       await this.prisma.cartItem.delete({
         where: { id: existing.id },
@@ -1102,14 +1119,12 @@ async addOrUpdateCart(userId: string, dto: AddToCartDto) {
       };
     }
 
-    // Update the quantity if it's still greater than 0
     return this.prisma.cartItem.update({
       where: { id: existing.id },
       data: { quantity: updatedQuantity },
     });
   }
 
-  // If the item doesn't exist, create a new cart item
   return this.prisma.cartItem.create({
     data: {
       user_id: userId,

@@ -125,23 +125,37 @@ export class StripePayment {
     return session;
   }
 
-  static async createPaymentIntent({
+ static async createPaymentIntent({
     amount,
     currency,
     customer_id,
     metadata,
+    order_items,
   }: {
     amount: number;
     currency: string;
     customer_id: string;
     metadata?: stripe.MetadataParam;
+    order_items: Array<{
+      product_id: string;
+      quantity: number;
+      product_name: string;
+      product_price: number;
+      user_id?: string;
+      total_price: number;
+    }>;
   }): Promise<stripe.PaymentIntent> {
-    return Stripe.paymentIntents.create({
-      amount: amount * 100, // amount in cents
+    const paymentIntent = await Stripe.paymentIntents.create({
+      amount: amount * 100,
       currency: currency,
       customer: customer_id,
-      metadata: metadata,
+      metadata: {
+        ...metadata,
+        order_items: JSON.stringify(order_items),
+      },
     });
+
+    return paymentIntent;
   }
 
   /**

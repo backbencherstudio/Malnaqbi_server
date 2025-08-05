@@ -37,5 +37,13 @@ export class BusinessOwnerController {
   }
   
 
+  @Get('orders')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  async getAllOrders(@Req() req: any) {
+    const userId = req.user.userId;
+    return this.businessOwnerService.getAllOrders(userId);
+  }
+
 
 }
