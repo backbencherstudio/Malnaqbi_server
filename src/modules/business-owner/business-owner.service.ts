@@ -11,7 +11,7 @@ import appConfig from 'src/config/app.config';
 @Injectable()
 export class BusinessOwnerService {
 
-  constructor(private readonly prisma:PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
 
   //------------------apply for business owner-------------------
@@ -23,10 +23,10 @@ export class BusinessOwnerService {
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-  
+
     let idDocFileName: string | undefined;
     let tradeLicenseFileName: string | undefined;
-  
+
     try {
       if (id_document) {
         idDocFileName = await this.uploadDocument(
@@ -34,7 +34,7 @@ export class BusinessOwnerService {
           appConfig().storageUrl.idDocument
         );
       }
-  
+
       if (trade_license) {
         tradeLicenseFileName = await this.uploadDocument(
           trade_license,
@@ -48,7 +48,7 @@ export class BusinessOwnerService {
         message: 'File upload failed',
       };
     }
-  
+
     const businessOwner = await this.prisma.businessOwner.create({
       data: {
         user_id: userId,
@@ -58,7 +58,7 @@ export class BusinessOwnerService {
         trade_license: tradeLicenseFileName,
       },
     });
-  
+
     const result = {
       ...businessOwner,
       ...(idDocFileName && {
@@ -72,7 +72,7 @@ export class BusinessOwnerService {
         ),
       }),
     };
-  
+
     return {
       success: true,
       message: 'Business owner created successfully',
@@ -93,53 +93,86 @@ export class BusinessOwnerService {
   //------------------product management business owner-------------------
 
 
-async getAllOrders(userId: string) {
-  try {
-    if (!userId) {
-      throw new Error('User ID is required');
-    }
+  //------------------get all orders-------------------
+  async getAllOrders(userId: string) {
+    try {
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },  
-      select: { id: true, name: true, email: true, type: true },
-    });
-
-    if (!user) {
-      return {
-        success: false,
-        message: 'User not found',
-      };
-    }
-
-    if (user.type !== 'business_owner') {
-      return {
-        success: false,
-        message: 'User is not a business owner',
-      };
-    }
-
-    const orders = await this.prisma.order.findMany({
-      include: {
-        cart_items: {
-          select: {
-            product_id: true,
-            quantity: true,
-           
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          BusinessOwner: {
+            select: {
+              id: true,
+              business_name: true,
+              business_type: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    return {
-      success: true,
-      orders,
-    };
-  } catch (error) {
-    console.error('Error fetching orders:', error);
+      const products = await this.prisma.product.findMany({
+        where: { business_owner_id: userId },
+        include: {
+          business_owner: {
+            select: {
+              id: true,
+              business_name: true,
+              business_type: true,
+            },
+          },
+        },
+      });
 
-    throw new InternalServerErrorException('Failed to fetch orders');
+      const orders = await this.prisma.order.findMany({
+        where: { user_id: userId },
+        select: {
+          id: true,
+          total_price: true,
+          status: true,
+          created_at: true,
+          updated_at: true,
+          user_id: true,
+        },
+      })
+
+      if (user.BusinessOwner.length === 0) {
+        return {
+          success: false,
+          message: 'User is not a business owner',
+        };
+
+      }
+
+      if (!user || user.type !== 'business_owner') {
+        return {
+          success: false,
+          message: 'User not found or is not a business owner',
+        };
+      }
+
+
+
+      if (!user) {
+        return {
+          success: false,
+          message: 'User not found',
+        };
+      }
+
+
+      return {
+        success: true,
+        return: orders,
+      };
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+
+      throw new InternalServerErrorException('Failed to fetch orders');
+    }
   }
-}
 
 
 }

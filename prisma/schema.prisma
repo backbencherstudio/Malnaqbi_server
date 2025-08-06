@@ -599,6 +599,7 @@ model Product {
   offer_title      String?
   start_date       DateTime?
   end_date         DateTime?
+  discount_type    DiscountType? @default(PERCENTAGE)
   qr_code_required Boolean?   @default(false)
   offer_active     Boolean?   @default(false)
   CartItem         CartItem[]
@@ -607,7 +608,7 @@ model Product {
   @@map("products")
 }
 
-// -----------------------//
+//------------------------//
 //  Review and rating    -//
 //------------------------//
 model ExperienceReview {

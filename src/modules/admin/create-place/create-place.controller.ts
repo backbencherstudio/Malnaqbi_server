@@ -67,9 +67,11 @@ async createProduct(
 
   //---------------start get all products------------------//
 @Get('products')
-async getAllProducts() {
+@UseGuards(JwtAuthGuard)
+async getAllProducts(@Req() req: any) {
   try {
-    return await this.createPlaceService.getAllProducts();
+    const userId = req.user.userId;
+    return await this.createPlaceService.getAllProducts(userId);
   } catch (error) {
     throw new InternalServerErrorException('Failed to retrieve products');
   }
