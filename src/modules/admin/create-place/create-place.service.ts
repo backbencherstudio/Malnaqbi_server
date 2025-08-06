@@ -7,6 +7,7 @@ import { SojebStorage } from 'src/common/lib/Disk/SojebStorage';
 import axios from 'axios';
 import { CreateProductDto } from './dto/create-product-dto';
 import e from 'express';
+
 @Injectable()
 export class CreatePlaceService {
   constructor(private readonly prisma: PrismaService) { }
@@ -271,9 +272,6 @@ export class CreatePlaceService {
         : null, // Return the full image URL
     };
   }
-
-
-
   //--------------end of get all places-----------------//
 
 
@@ -401,8 +399,25 @@ export class CreatePlaceService {
   //---------------end create product------------------//
 
   //---------------start get all products------------------//
-  async getAllProducts() {
+  async getAllProducts(userId: string) {
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+         BusinessOwner: {
+          select: {
+            id: true,
+            user_id: true,
+            business_name: true,
+            business_type: true,
+            
+          },
+        },
+      },
+    });
+
     const products = await this.prisma.product.findMany({
+      where: { user_id: user.BusinessOwner[0]?.user_id },
       include: {
         place: {
           select: {

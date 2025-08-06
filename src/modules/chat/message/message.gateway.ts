@@ -20,8 +20,8 @@ export class MessageGateway
 {
   @WebSocketServer()
   server: Server;
-  public users: Record<string, string> = {}; // Store user socketId -> userId
-  public adminSocketIds: string[] = []; // Store all active admin socketIds
+  public users: Record<string, string> = {};
+  public adminSocketIds: string[] = []; 
   public readonly ADMIN_ID: string | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
@@ -39,7 +39,6 @@ export class MessageGateway
       delete this.users[socket.id];
       console.log(`User ${userId} disconnected`);
 
-      // Notify all connected admins about the user disconnecting
       if (this.adminSocketIds.length > 0) {
         this.adminSocketIds.forEach(adminSocketId => {
           this.server.to(adminSocketId).emit('user_disconnected', userId);
@@ -55,8 +54,9 @@ export class MessageGateway
   // Register an admin and add their socketId to adminSocketIds
   @SubscribeMessage('register_admin')
   async handleAdminRegister(socket: Socket, adminId: string) {
-    console.log(`Admin registration attempt: ${adminId}`);
-
+  console.log(`Admin registration attempt: ${adminId}`);
+ console.log("id", { id: adminId, type: 'admin' });
+ 
     try {
       const existingAdmin = await this.prisma.user.findUnique({
         where: { id: adminId, type: 'admin' },
@@ -64,6 +64,8 @@ export class MessageGateway
 
       if (!existingAdmin) {
         socket.emit('registration_error', 'Admin not found');
+        console.log(`Admin ${adminId} not found`);
+        
         return;
       }
 
@@ -146,12 +148,11 @@ async handleMessageToAdmin(socket: Socket, message: string) {
     return;
   }
 
-  // Fetch the admin's ID dynamically within the method (instead of using this.ADMIN_ID)
   const admin = await this.prisma.user.findFirst({
     where: {
-      type: 'admin', // Ensure the receiver is an admin
+      type: 'admin', 
     },
-    select: { id: true }, // Only select the id of the admin
+    select: { id: true }, 
   });
 
   if (!admin) {
@@ -174,7 +175,6 @@ async handleMessageToAdmin(socket: Socket, message: string) {
 // Handle message from admin to a user
 @SubscribeMessage('message_to_user')
 async handleMessageToUser(socket: Socket, data: { userId: string; message: string }) {
-  // Verify sender is admin dynamically by checking the socket's associated userId
   const senderId = this.users[socket.id];
   const sender = await this.prisma.user.findUnique({
     where: { id: senderId },
@@ -200,19 +200,17 @@ async handleMessageToUser(socket: Socket, data: { userId: string; message: strin
 
   console.log(`Message from admin to ${data.userId}: ${data.message}`);
 
-  // Broadcast this message to all admins, so all admins can see the message in real-time
   this.adminSocketIds.forEach(adminSocketId => {
-    if (adminSocketId !== socket.id) { // Don't send to the sender admin
+    if (adminSocketId !== socket.id) { 
       this.server.to(adminSocketId).emit('admin_message_received', {
         message: data.message,
         userId: data.userId,
         timestamp: new Date().toISOString(),
-        senderId: this.users[socket.id],  // The sender admin's ID
+        senderId: this.users[socket.id], 
       });
     }
   });
 }
-// Helper method to get a user's socketId based on userId
   public getSocketIdByUserId(userId: string): string | undefined {
     return Object.keys(this.users).find(socketId => this.users[socketId] === userId);
   }

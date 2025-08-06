@@ -15,6 +15,7 @@ async sendMessageToAdmin(userId: string, message: string): Promise<{ success: bo
   const user = await this.prisma.user.findUnique({
     where: { id: userId },
   });
+ 
 
   if (!user) {
     throw new Error('User not found');
@@ -34,13 +35,75 @@ async sendMessageToAdmin(userId: string, message: string): Promise<{ success: bo
     },
   });
 
+ let is_new_conversation = false;
+
   if (!conversation) {
+    is_new_conversation = true;
     conversation = await this.prisma.conversation.create({
       data: {
         creator_id: userId,
         participant_id: "cmdy3sc690001repcewppl7sj",
       },
+      include: {
+        creator: {
+          select: {
+            id: true, 
+            phone_number: true,
+            type: true,
+          },
+        },
+        participant: {
+          select: {
+            id: true,
+            status: true,
+            phone_number: true,
+            type: true,
+          },
+        },
+        messages: {
+          orderBy: {
+            created_at: 'asc', 
+          },
+        }, 
+      },
     });
+
+    //     const conversation_final = await this.prisma.conversation.findUnique({
+    //   where: { id: conversation.id },
+    //   include: {
+    //     creator: {
+    //       select: {
+    //         id: true, // Select only the specified fields for creator
+    //         created_at: true,
+    //         status: true,
+    //         email: true,
+    //         phone_number: true,
+    //         billing_id: true,
+    //         type: true,
+    //       },
+    //     },
+    //     participant: {
+    //       select: {
+    //         id: true, // Select only the specified fields for participant
+    //         created_at: true,
+    //         status: true,
+    //         email: true,
+    //         phone_number: true,
+    //         billing_id: true,
+    //         type: true,
+    //       },
+    //     },
+    //     messages: {
+    //       orderBy: {
+    //         created_at: 'asc', // Order messages by creation date
+    //       },
+    //     }, // Include all messages related to the conversation
+    //   },
+    // });
+
+     
+
+
     console.log('New conversation created: ', conversation.id);
   }
 
@@ -58,6 +121,18 @@ async sendMessageToAdmin(userId: string, message: string): Promise<{ success: bo
       conversation_id: conversation.id,
     },
   });
+
+  conversation['messages'].push(newMessage);
+
+  if(is_new_conversation){
+    this.messageGateway.server.emit('new_conversation', {
+      // conversationId: conversation.id,
+      // userId,
+      // message,
+      conversation
+    });
+
+  }
 
 
   if (this.messageGateway.adminSocketIds.length > 0) {
@@ -207,30 +282,26 @@ async getAllConversations() {
         creator: {
           select: {
             id: true, // Select only the specified fields for creator
-            created_at: true,
             status: true,
             name: true,
-            email: true,
             phone_number: true,
-            billing_id: true,
+
             type: true,
           },
         },
         participant: {
           select: {
-            id: true, // Select only the specified fields for participant
-            created_at: true,
+            id: true, 
             status: true,
-            email: true,
             phone_number: true,
-            billing_id: true,
+
             type: true,
           },
         },
-        messages: true, // Keep all messages
+        messages: true,
       },
       orderBy: {
-        created_at: 'asc', // You can still order the conversations
+        created_at: 'asc', 
       },
     });
 
@@ -288,7 +359,6 @@ async getOneConversation(conversationId: string) {
 }
 // Get one conversation by user ID
 async getOneConversationByUserID(userID: string) {
-  // Step 1: Ensure userID is valid
   if (!userID) {
     throw new Error('Invalid userID');
   }
@@ -300,37 +370,29 @@ async getOneConversationByUserID(userID: string) {
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         OR: [
-          { creator_id: userID }, // Check if the user is the creator
-          { participant_id: userID }, // Check if the user is a participant
+          { creator_id: userID }, 
+          { participant_id: userID }, 
         ],
       },
       include: {
         creator: {
           select: {
             id: true,
-            created_at: true,
-            status: true,
             name: true,
-            email: true,
             phone_number: true,
-            billing_id: true,
             type: true,
           },
         },
         participant: {
           select: {
             id: true,
-            created_at: true,
-            status: true,
-            email: true,
             phone_number: true,
-            billing_id: true,
             type: true,
           },
         },
         messages: {
           orderBy: {
-            created_at: 'asc', // Order messages by creation date
+            created_at: 'asc', 
           },
         },
       },
@@ -340,13 +402,11 @@ async getOneConversationByUserID(userID: string) {
    // console.log('Conversation fetched:', conversation);
 
     if (!conversation) {
-      // Step 4: If no conversation found, throw a detailed error
       throw new Error(`No conversation found for user: ${userID}`);
     }
 
     return conversation;
   } catch (error) {
-    // Step 5: Log the error and throw a more descriptive error
     console.error('Error fetching conversation:', error.message);
     throw new Error(`Could not fetch conversation for user ${userID}: ${error.message}`);
   }
