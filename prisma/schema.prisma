@@ -317,12 +317,19 @@ model Attachment {
   @@map("attachments")
 }
 
+enum ConversationStatus {
+  RESOLEVED
+  OPEN
+}
+
 // this table stores conversation
 model Conversation {
   id         String    @id @default(cuid())
   created_at DateTime  @default(now())
   updated_at DateTime  @default(now())
   deleted_at DateTime?
+
+  status ConversationStatus? @default(OPEN)
 
   creator_id String?
   creator    User?   @relation("creator", fields: [creator_id], references: [id])
@@ -603,7 +610,7 @@ model Product {
   qr_code_required Boolean?   @default(false)
   offer_active     Boolean?   @default(false)
   CartItem         CartItem[]
-  Order            Order[]
+
 
   @@map("products")
 }
@@ -687,13 +694,11 @@ model Order {
   user_name String?
   status    String  @default("pending")
 
-  product_id     String?
-  product_title  String?
+
   payment_method String? @default("wallet")
   payment_status String? @default("pending")
   commission     Float?  @default(0.0)
 
-  product     Product? @relation(fields: [product_id], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   total_price Float?
 

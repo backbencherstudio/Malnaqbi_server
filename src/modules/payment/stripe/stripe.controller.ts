@@ -96,6 +96,7 @@ export class StripeController {
         msg: 'PaymentIntent created successfully',
         totalAmount,
         orderId: order.id,
+        order,
       };
     } catch (error) {
       console.error('Error creating PaymentIntent:', error);

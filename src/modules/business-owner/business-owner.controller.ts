@@ -42,8 +42,14 @@ export class BusinessOwnerController {
   @UseGuards(JwtAuthGuard)
   async getAllOrders(@Req() req: any) {
     const userId = req.user.userId;
-    return this.businessOwnerService.getAllOrders(userId);
+    console.log(`Fetching orders for user ID: ${userId}`);
+    
+    return this.businessOwnerService.getAllOrderByBusinessUserId(userId);
   }
-
+  
+  @Get('all-orders')
+  async getAllOrdersForAdmin() {
+    return this.businessOwnerService.getAllOrders();
+  }
 
 }
