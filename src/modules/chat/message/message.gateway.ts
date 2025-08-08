@@ -214,4 +214,14 @@ async handleMessageToUser(socket: Socket, data: { userId: string; message: strin
   public getSocketIdByUserId(userId: string): string | undefined {
     return Object.keys(this.users).find(socketId => this.users[socketId] === userId);
   }
+
+  emitConversationStatusUpdate(conversationId: string, status: string, updatedBy: string) {
+  this.server.emit('conversation_status_updated', {
+    conversationId,
+    status,
+    updatedBy,
+  });
+  console.log(`Emitted status update for conversation ${conversationId}`);
+}
+
 }
