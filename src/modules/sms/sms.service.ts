@@ -1,12 +1,14 @@
-import * as Twilio from 'twilio';
+import { Injectable } from '@nestjs/common';
+const twilio = require('twilio'); // Change to require syntax
 
+@Injectable()
 export class SmsService {
   private client;
 
   constructor() {
-    this.client = Twilio(
+    this.client = new twilio( // Add 'new' keyword here
       process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
+      process.env.TWILIO_AUTH_TOKEN,
     );
   }
 
